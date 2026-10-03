@@ -1,4 +1,11 @@
 {
+  "clubsV2": { ".read": false, ".write": false },
+  "userClubsV2": { ".read": false, ".write": false },
+  "eventSchedulesV2": { ".read": false, ".write": false },
+  "rosterHandoffsV2": { ".read": false, ".write": false },
+  "lineIntegrationV2": { ".read": false, ".write": false },
+  "registrationV1": { ".read": false, ".write": false },
+  "rosterHandoffs": { ".read": false, ".write": false },
   "rankingV1": {
     ".read": false,
     ".write": false

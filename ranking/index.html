@@ -112,6 +112,8 @@
 
     // 新版獨立資料區，不覆蓋既有 /badminton 或 /session。
     window.RANKING_DATA_PATH = '/rankingV1';
+    window.REGISTRATION_V2 = true;
+    window.LINE_INTEGRATION_V2 = true;
 
     // 登入狀態保留在瀏覽器，關掉分頁再打開不用重新登入
     firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);

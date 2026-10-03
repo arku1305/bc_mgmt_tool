@@ -1673,129 +1673,18 @@ window.Sidebar = Sidebar;
 // ════════════════════════════════════════════════════════════════════════════
 
 // 加入活動頁面 - 支援 admin / player 兩種模式
-// 球員自助報到：從名單挑自己的名字 → 確認報到（可選同時繳費）
+// 球友選姓名只用於此瀏覽器標示，不修改正式名單。
 function PlayerCheckInScreen({ players, accent, onCheckIn, onSkip }) {
-  const [query, setQuery] = React.useState('');
-  const [selId, setSelId] = React.useState(null);
-
-  const list = (players || []).slice().sort(function(a, b) {
-    if (!!a.checkedIn !== !!b.checkedIn) return a.checkedIn ? 1 : -1; // 未報到在前
-    return String(a.name).localeCompare(String(b.name), 'zh-Hant');
-  });
-  const q = query.trim().toLowerCase();
-  const filtered = q ? list.filter(function(p) { return String(p.name).toLowerCase().indexOf(q) !== -1; }) : list;
-  const sel = selId ? (players || []).find(function(p) { return p.id === selId; }) : null;
-
-  const shell = {
-    minHeight: '100dvh', width: '100vw',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'radial-gradient(ellipse at top, #1a2533 0%, #131820 50%, #0c1016 100%)',
-    padding: 24,
-  };
-  const card = {
-    width: '100%', maxWidth: 460, maxHeight: '90dvh',
-    background: '#1a2029', border: '1px solid var(--line)',
-    borderRadius: 18, padding: '28px 26px',
-    boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-    display: 'flex', flexDirection: 'column', gap: 14,
-  };
-
-  function Header() {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{
-          width: 34, height: 34, borderRadius: 9, background: accent,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, color: '#0a1a10', fontWeight: 900,
-        }}>羽</span>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: 1 }}>
-            排點 <span style={{ color: 'var(--muted)', fontWeight: 500, fontSize: 11 }}>報到</span>
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>
-            星期二 · 20:00–22:00 · 南科新力羽球館
-          </div>
-        </div>
+  return <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0c1016', padding: 24 }}>
+    <div style={{ maxWidth: 460, width: '100%', padding: 26, borderRadius: 18, background: '#1a2029' }}>
+      <h2>查看即時排點</h2>
+      <p style={{ color: 'var(--muted)' }}>可選自己的名字，方便辨識上場位置。報到由團長確認。</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '55dvh', overflowY: 'auto' }}>
+        {(players || []).map(function(p) { return <button key={p.id} onClick={function() { onCheckIn(p.id); }} style={{ padding: 12, borderRadius: 8, background: '#0c1016', border: '1px solid var(--line)', color: accent, cursor: 'pointer' }}>{p.name}</button>; })}
       </div>
-    );
-  }
-
-  // ── 確認畫面 ──
-  if (sel) {
-    return (
-      <div style={shell}>
-        <div style={card}>
-          <Header />
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)' }}>CHECK-IN 確認報到</div>
-          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'Noto Sans TC', sans-serif", color: 'var(--text)' }}>{sel.name}</div>
-          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>確認後即完成報到、加入排點。</p>
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button onClick={function() { setSelId(null); }} style={{
-              flex: '0 0 auto', background: 'transparent', border: '1px solid var(--line)', color: 'var(--muted)',
-              borderRadius: 10, padding: '13px 20px', fontSize: 14, cursor: 'pointer', fontFamily: "'Noto Sans TC', sans-serif",
-            }}>返回</button>
-            <button onClick={function() { onCheckIn(sel.id, false); }} style={{
-              flex: 1, background: accent, color: '#0a1a10', border: 'none',
-              borderRadius: 10, padding: '13px', fontSize: 15, fontWeight: 800, letterSpacing: 1,
-              cursor: 'pointer', boxShadow: `0 8px 22px ${accent}55`, fontFamily: "'Noto Sans TC', sans-serif",
-            }}>完成報到</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── 名單挑選畫面 ──
-  return (
-    <div style={shell}>
-      <div style={card}>
-        <Header />
-        <h2 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>選擇你的名字報到</h2>
-        <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
-          找到你在 LINE 報名的名字，點一下即可完成報到、加入排點。
-        </p>
-        <input
-          value={query}
-          onChange={function(e) { setQuery(e.target.value); }}
-          placeholder="搜尋名字…"
-          style={{
-            width: '100%', background: '#0d1218', border: '1.5px solid var(--line)',
-            borderRadius: 10, padding: '11px 14px', color: 'var(--text)', fontSize: 15,
-            fontFamily: "'Noto Sans TC', sans-serif", outline: 'none',
-          }}
-          onFocus={function(e) { e.target.style.borderColor = accent; }}
-          onBlur={function(e) { e.target.style.borderColor = 'var(--line)'; }}
-        />
-        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 60, maxHeight: '42dvh' }}>
-          {filtered.length === 0 ? (
-            <div style={{ color: 'var(--dim)', fontSize: 13, textAlign: 'center', padding: '20px 0', fontFamily: "'Noto Sans TC', sans-serif" }}>
-              {(players || []).length === 0 ? '名單載入中，或尚未建立…' : '找不到這個名字，請通知管理者。'}
-            </div>
-          ) : filtered.map(function(p) {
-            return (
-              <button key={p.id}
-                onClick={function() { p.checkedIn ? onCheckIn(p.id, false) : setSelId(p.id); }}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                  background: p.checkedIn ? 'transparent' : '#0d1218',
-                  border: '1px solid ' + (p.checkedIn ? 'var(--line)' : '#2a3340'),
-                  borderRadius: 10, padding: '12px 14px', cursor: 'pointer', textAlign: 'left',
-                  opacity: p.checkedIn ? 0.55 : 1,
-                }}
-              >
-                <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', fontFamily: "'Noto Sans TC', sans-serif" }}>
-                  {p.regular === true && <span style={{ color: '#fbbf24', marginRight: 5 }}>★</span>}{p.name}
-                </span>
-                {p.checkedIn
-                  ? <span style={{ fontSize: 11, color: 'var(--dim)', fontFamily: "'Noto Sans TC', sans-serif" }}>已報到</span>
-                  : <span style={{ fontSize: 13, color: accent, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>報到 →</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <button onClick={onSkip} style={{ width: '100%', marginTop: 16, padding: 12, background: accent, border: 0, borderRadius: 8, cursor: 'pointer' }}>直接查看排點</button>
     </div>
-  );
+  </div>;
 }
 
 function JoinScreen({ onJoin, onSkip, theme, accent, role, players, onCheckIn }) {
@@ -2443,10 +2332,19 @@ function HistoryPanel({ accent, history, onClose }) {
 // ════════════════════════════════════════════════════════════════════════════
 // Firebase 資料層
 // ════════════════════════════════════════════════════════════════════════════
-var FIREBASE_URL = 'https://badmintion-ranking-default-rtdb.asia-southeast1.firebasedatabase.app/badminton';
+var FIREBASE_URL = 'https://badminton-scheduler-8a849-default-rtdb.asia-southeast1.firebasedatabase.app' + (window.RANKING_DATA_PATH || '/rankingV1');
+var RANKING_PLAYER_VIEW = new URLSearchParams(window.location.search).has('player');
+var PUBLIC_SCHEDULE_URL = (window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app').replace(/\/$/, '') + '/api/ranking-view';
 
 function fbGet(path) {
-  // 帶上管理者 token（若已登入），讓需要認證的讀取也能成功
+  // 球友僅能取得伺服器明確允許的公開欄位，沒有付款或訊息資料。
+  if (RANKING_PLAYER_VIEW) {
+    return fetch(PUBLIC_SCHEDULE_URL, { cache: 'no-store' }).then(function(r) {
+      if (!r.ok) throw new Error('排點資訊暫時無法載入');
+      return r.json();
+    }).then(function(data) { return path ? data[path.slice(1)] : data; }).catch(function() { return null; });
+  }
+  // 管理端讀取私有資料。
   var token = window.__AUTH_TOKEN__;
   var url = FIREBASE_URL + path + '.json' + (token ? '?auth=' + token : '');
   return fetch(url)
@@ -2457,12 +2355,23 @@ function fbGet(path) {
 // 寫入必須帶上登入者的 ID Token，配合 Firebase 安全規則擋下未登入的篡改
 function fbPut(path, data) {
   var token = window.__AUTH_TOKEN__;
-  var url = FIREBASE_URL + path + '.json' + (token ? '?auth=' + token : '');
+  if (RANKING_PLAYER_VIEW || !token) return Promise.resolve(false);
+  var url = FIREBASE_URL + path + '.json?auth=' + encodeURIComponent(token);
   return fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).catch(function() {});
+  }).then(function(response) {
+    if (!response.ok) throw new Error('寫入失敗');
+    return true;
+  }).catch(function() {
+    if (!window.__WRITE_ERROR_SHOWN__) {
+      window.__WRITE_ERROR_SHOWN__ = true;
+      alert('變更未儲存，請確認登入與網路，重新整理後再試。');
+      setTimeout(function() { window.__WRITE_ERROR_SHOWN__ = false; }, 5000);
+    }
+    return false;
+  });
 }
 
 function loadData()           { return fbGet(''); }
@@ -2626,34 +2535,21 @@ function flashTitle(msg) {
 // ════════════════════════════════════════════════════════════════════════════
 // PasswordOverlay
 // ════════════════════════════════════════════════════════════════════════════
-function PasswordOverlay({ accent }) {
-  const [email, setEmail] = React.useState('');
-  const [input, setInput] = React.useState('');
+function PasswordOverlay({ accent, accessError }) {
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-
-  // ── Firebase Authentication 登入（帳號密碼不再寫在前端）─────────────
-  const check = () => {
+  const check = async () => {
     if (busy) return;
-    if (!email.trim() || !input) { setError('請輸入帳號與密碼'); return; }
-    setBusy(true);
-    setError('');
-    firebase.auth().signInWithEmailAndPassword(email.trim(), input)
-      .then(function() {
-        // 登入成功後由 onAuthStateChanged 接手，此處不需額外處理
-        setBusy(false);
-      })
-      .catch(function(err) {
-        setBusy(false);
-        setInput('');
-        var msg = '登入失敗，請再試一次';
-        if (err && err.code === 'auth/invalid-email') msg = '帳號格式不正確';
-        else if (err && (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential')) msg = '帳號或密碼錯誤';
-        else if (err && err.code === 'auth/user-not-found') msg = '找不到此帳號';
-        else if (err && err.code === 'auth/too-many-requests') msg = '嘗試次數過多，請稍後再試';
-        setError(msg);
-        setTimeout(function() { setError(''); }, 3000);
-      });
+    setBusy(true); setError('');
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await firebase.auth().signInWithPopup(provider);
+    } catch (err) {
+      if (err.code !== 'auth/popup-closed-by-user') {
+        setError(err.code === 'auth/unauthorized-domain' ? '網站登入授權尚未設定，請聯絡管理者。' : '登入未完成，請允許登入視窗後再試。');
+      }
+    } finally { setBusy(false); }
   };
 
   return (
@@ -2679,36 +2575,6 @@ function PasswordOverlay({ accent }) {
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>管理員登入</h2>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 24px' }}>請以管理員帳號登入以開啟排點功能</p>
 
-        <input
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && check()}
-          placeholder="管理員帳號 (Email)"
-          style={{
-            width: '100%', background: '#0c1016', border: '1px solid #2a3340',
-            borderRadius: 10, padding: '12px 16px', color: '#fff',
-            fontSize: 14, textAlign: 'center',
-            outline: 'none', marginBottom: 10,
-          }}
-        />
-
-        <input
-          type="password"
-          autoComplete="current-password"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && check()}
-          placeholder="••••••••"
-          style={{
-            width: '100%', background: '#0c1016', border: '1px solid #2a3340',
-            borderRadius: 10, padding: '12px 16px', color: '#fff',
-            fontSize: 18, textAlign: 'center', letterSpacing: 4,
-            outline: 'none', marginBottom: 16,
-          }}
-        />
-
         <button
           onClick={check}
           disabled={busy}
@@ -2717,9 +2583,9 @@ function PasswordOverlay({ accent }) {
             color: '#0a1a10', borderRadius: 10, padding: '12px',
             fontSize: 14, fontWeight: 800, cursor: busy ? 'wait' : 'pointer',
           }}
-        >{busy ? '登入中…' : '登入'}</button>
+        >{busy ? '登入中…' : '使用 Google 帳號登入'}</button>
 
-        {error && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 12, fontWeight: 600 }}>{error}</div>}
+        {(error || accessError) && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 12, fontWeight: 600 }}>{error || accessError}</div>}
         
         <div style={{ marginTop: 24 }}>
           <a href="?player" style={{ color: 'var(--dim)', fontSize: 12, textDecoration: 'none' }}>我是球員，切換至唯讀模式</a>
@@ -2736,21 +2602,30 @@ function App() {
   // ── 認證狀態：完全交給 Firebase Auth，不再自行用 localStorage 記錄 ─────
   const [authenticated, setAuthenticated] = React.useState(false);
   const [authReady, setAuthReady] = React.useState(false);
+  const [accessError, setAccessError] = React.useState('');
 
   React.useEffect(function() {
-    return firebase.auth().onAuthStateChanged(function(user) {
-      if (user) {
-        user.getIdToken().then(function(t) {
-          window.__AUTH_TOKEN__ = t;
-          setAuthenticated(true);
-          setAuthReady(true);
-        });
-      } else {
-        window.__AUTH_TOKEN__ = null;
-        setAuthenticated(false);
-        setAuthReady(true);
+    let active = true, generation = 0;
+    const unsubscribe = firebase.auth().onAuthStateChanged(async function(user) {
+      const request = ++generation;
+      window.__AUTH_TOKEN__ = null;
+      setAuthenticated(false);
+      if (!user || RANKING_PLAYER_VIEW) { setAuthReady(true); return; }
+      setAuthReady(false); setAccessError('');
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(FIREBASE_URL + '.json?auth=' + encodeURIComponent(token), { cache: 'no-store' });
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? '這個 Google 帳號尚未獲得團長權限，請切換至已核准帳號。' : '無法確認團長權限，請稍後重試。');
+        if (!active || request !== generation) return;
+        window.__AUTH_TOKEN__ = token;
+        setAuthenticated(true);
+      } catch (err) {
+        if (active && request === generation) setAccessError(err.message || '無法確認團長權限');
+      } finally {
+        if (active && request === generation) setAuthReady(true);
       }
     });
+    return function() { active = false; unsubscribe(); };
   }, []);
 
   // ID Token 有效期約 1 小時，每 30 分鐘主動更新，避免排點到一半寫入失敗
@@ -2828,6 +2703,7 @@ function App() {
   var [activityOpen, setActivityOpen] = React.useState(false);
   var [eventIntegration, setEventIntegration] = React.useState(null);
   var [registrationChanged, setRegistrationChanged] = React.useState(false);
+  var [scheduleError, setScheduleError] = React.useState('');
 
   // 訊息：球員撰寫 / 管理者收件匣
   var [msgOpen, setMsgOpen] = React.useState(false);
@@ -2862,6 +2738,8 @@ function App() {
   React.useEffect(function() {
     if (role === 'admin' && (!authReady || !authenticated)) return;
     loadData().then(function(data) {
+      if (!data && role === 'player') setScheduleError('目前無法載入排點，請確認網路後重新整理。');
+      else setScheduleError('');
       var pArr = (data && Array.isArray(data.players))
         ? data.players.map(window.normalizePlayer)
         : [];
@@ -2963,7 +2841,7 @@ function App() {
 
   // ── 管理者模式：每 3 秒讀取 /players 更新名單，並收球員訊息 ────────────────
   React.useEffect(function() {
-    if (role !== 'admin') return;
+    if (role !== 'admin' || !authenticated) return;
     function tick() {
       fbGet('/players').then(function(data) {
         if (Array.isArray(data)) setPlayers(data.map(window.normalizePlayer));
@@ -2978,20 +2856,18 @@ function App() {
     tick();
     var interval = setInterval(tick, 3000);
     return function() { clearInterval(interval); };
-  }, [role]);
+  }, [role, authenticated]);
 
   // ── 球員模式：立刻讀取一次，之後每 2 秒輪詢 ─────────────────────────────
   React.useEffect(function() {
     if (role !== 'player' || !joined) return;
 
     function poll() {
-      return Promise.all([
-        fbGet('/players'),
-        fbGet('/court1'),
-        fbGet('/court2'),
-        fbGet('/roundNumbers'),
-        fbGet('/callUp'),
-      ]).then(function(res) {
+      return fbGet('').then(function(data) {
+        if (!data) { setScheduleError('目前無法更新排點，畫面保留上次結果，請稍後重試。'); return; }
+        setScheduleError('');
+        var res = [data.players, data.court1, data.court2, data.roundNumbers, data.callUp];
+        setEventIntegration(data.eventIntegration || null);
         var pArr = Array.isArray(res[0]) ? res[0].map(window.normalizePlayer) : [];
         var pMap = {};
         pArr.forEach(function(p) { pMap[p.id] = p; });
@@ -3349,23 +3225,12 @@ function App() {
     setMsgOpen(true);
   }
 
-  // 球員自助報到：從名單挑選自己的 id → 標記報到（可選同時繳費）→ 設為 me
-  function handlePlayerCheckIn(pid, markPaid) {
-    fbGet('/players').then(function(current) {
-      var pArr = Array.isArray(current) ? current.map(window.normalizePlayer) : players;
-      var found = pArr.find(function(p) { return p.id === pid; });
-      if (!found) { pArr = players; found = players.find(function(p) { return p.id === pid; }); }
-      var next = pArr.map(function(p) {
-        return p.id === pid ? Object.assign({}, p, { checkedIn: true, paid: markPaid ? true : p.paid }) : p;
-      });
-      setPlayers(next);
-      setMeId(pid);
-      if (found && found.name) sessionStorage.setItem('badminton_myName', found.name);
-      fbPut('/players', next).then(function() { setJoined(true); });
-    }).catch(function() {
-      var next = players.map(function(p) { return p.id === pid ? Object.assign({}, p, { checkedIn: true, paid: markPaid ? true : p.paid }) : p; });
-      setPlayers(next); setMeId(pid); setJoined(true);
-    });
+  // 選姓名只保存在此瀏覽器，供標示自己與上場提醒使用；不修改報到或付款。
+  function handlePlayerCheckIn(pid) {
+    var found = players.find(function(p) { return p.id === pid; });
+    if (!found) return;
+    setMeId(pid); setJoined(true);
+    sessionStorage.setItem('badminton_myName', found.name);
   }
 
   // ── Drag & Drop ───────────────────────────────────────────────────────────
@@ -3458,7 +3323,7 @@ function App() {
   if (showLock) {
     return (
       <React.Fragment>
-        <PasswordOverlay accent={tweaks.accent} />
+        <PasswordOverlay accent={tweaks.accent} accessError={accessError} />
         <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
       </React.Fragment>
     );
@@ -3467,6 +3332,7 @@ function App() {
   if (!joined) {
     return (
       <React.Fragment>
+        {scheduleError && <div role="alert" style={{ position: 'fixed', top: 0, zIndex: 100, padding: 12, background: '#463a20', color: '#ffe0a0', width: '100%' }}>{scheduleError}</div>}
         <JoinScreen onJoin={handleJoin} onSkip={handleSkip} theme={tweaks.theme} accent={tweaks.accent} role={role} players={players} onCheckIn={handlePlayerCheckIn} />
         <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
       </React.Fragment>
@@ -3494,6 +3360,7 @@ function App() {
         eventInfo={{ day: eventIntegration ? '活動' : 'TUE', time: eventIntegration ? eventIntegration.eventTime : '20:00-22:00', location: '南科新力羽球館' }}
       />
 
+      {scheduleError && <div role="alert" style={{ background: '#463a20', color: '#ffe0a0', padding: 10 }}>{scheduleError}</div>}
       {isAdmin && registrationChanged && <button onClick={function() { setActivityOpen(true); }} style={{ background: '#463a20', color: '#ffe0a0', border: 0, padding: 10, cursor: 'pointer' }}>報名名單有更新，尚未套用到排點。點此查看差異。</button>}
       <div style={{
         flex: 1, display: 'flex',
@@ -3569,7 +3436,7 @@ function App() {
       {qrOpen && <QRDialog url={playerUrl} onClose={function() { setQROpen(false); }} accent={tweaks.accent} />}
 
       {/* 浮動訊息鈕：球員＝傳訊給主辦；管理者＝收件匣(未讀紅點) */}
-      <button
+      {isAdmin && <button
         onClick={openMessages}
         title={role === 'admin' ? '球員訊息' : '傳訊息給主辦'}
         style={{
@@ -3590,7 +3457,7 @@ function App() {
             border: '2px solid #0c1016',
           }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}
-      </button>
+      </button>}
 
       {/* 浮動鈕（疊在訊息鈕上方）：管理者＝出場組合紀錄；球員＝偏好搭配 */}
       {role === 'admin' && (
@@ -3605,19 +3472,6 @@ function App() {
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         >📋</button>
-      )}
-      {role !== 'admin' && meId && (
-        <button
-          onClick={function() { setPrefOpen(true); }}
-          title="偏好搭配：想同隊 / 想對面"
-          style={{
-            position: 'fixed', right: 16, bottom: 80, zIndex: 150,
-            width: 54, height: 54, borderRadius: '50%',
-            background: '#232b36', color: tweaks.accent, border: `1px solid ${tweaks.accent}55`,
-            fontSize: 24, cursor: 'pointer', boxShadow: '0 8px 22px rgba(0,0,0,0.5)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >🤝</button>
       )}
 
       {msgOpen && role === 'admin' && (

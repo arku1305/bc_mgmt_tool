@@ -95,19 +95,22 @@
   <script>
     // ════════════════════════════════════════════════════════════════════
     // Firebase 設定
-    // 專案：badmintion-ranking（asia-southeast1）
+    // 專案：badminton-scheduler-8a849（asia-southeast1）
     // 這串金鑰公開在前端是 Firebase 的正常設計，不是安全漏洞。
     // 真正的防護來自 Realtime Database 的安全規則（見 README）。
     // ════════════════════════════════════════════════════════════════════
     firebase.initializeApp({
-      apiKey: "AIzaSyBeoYWIBzBR6UVY8tTBrhlEi1xYC2ww38M",
-      authDomain: "badmintion-ranking.firebaseapp.com",
-      databaseURL: "https://badmintion-ranking-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "badmintion-ranking",
-      storageBucket: "badmintion-ranking.firebasestorage.app",
-      messagingSenderId: "76782338503",
-      appId: "1:76782338503:web:457b500cf579dd9914d9e2"
+      apiKey: "AIzaSyCzQEcX1CrqlPjCY9HrL5xlH1fNXeR99S8",
+      authDomain: "badminton-scheduler-8a849.firebaseapp.com",
+      databaseURL: "https://badminton-scheduler-8a849-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "badminton-scheduler-8a849",
+      storageBucket: "badminton-scheduler-8a849.firebasestorage.app",
+      messagingSenderId: "162091746149",
+      appId: "1:162091746149:web:b442ce74d461ab1fc3d78c"
     });
+
+    // 新版獨立資料區，不覆蓋既有 /badminton 或 /session。
+    window.RANKING_DATA_PATH = '/rankingV1';
 
     // 登入狀態保留在瀏覽器，關掉分頁再打開不用重新登入
     firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
@@ -125,8 +128,8 @@
 
   <!-- 模組載入順序。?v= 是版本號：每次更新 main.js 時遞增，讓瀏覽器抓到新版
        （GitHub Pages 會快取 main.js，不加版本號會一直用舊的、需強制重新整理）。 -->
-  <script src="handoff.js?v=20261003-1"></script>
-  <script type="text/babel" data-presets="react" src="handoff-panel.jsx?v=20261003-1"></script>
-  <script type="text/babel" data-presets="react" src="main.js?v=20261003-1"></script>
+  <script src="handoff.js?v=20261003-2"></script>
+  <script type="text/babel" data-presets="react" src="handoff-panel.jsx?v=20261003-2"></script>
+  <script type="text/babel" data-presets="react" src="main.js?v=20261003-2"></script>
 </body>
 </html>

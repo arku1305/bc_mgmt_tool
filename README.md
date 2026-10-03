@@ -4,7 +4,7 @@
 ## 兩套工具與目前串接範圍
 
 - `報名機器人/`：Vercel API、LINE 群組指令與網頁報名；使用既有 Firebase Admin 環境變數。
-- `ranking/`：靜態 React 排點工具，使用既有 Firebase Authentication 與 Realtime Database。
+- `ranking/`：靜態 React 排點工具，使用自有 `badminton-scheduler-8a849` Firebase Google 登入與 `/rankingV1` 獨立資料區。
 - 兩套工具仍可獨立使用。原本貼上名單匯入、新增球員、排點及 QR 入口保留。
 - 新增「活動匯入」：以目前報名端的活動為來源，團長確認時建立活動 ID 與名單版本，然後在排點端選擇套用差異。不是新增完整活動管理後台，也不自動開團、搬移舊資料或入帳。
 
@@ -34,7 +34,7 @@
 
 排點預設連接目前程式已使用的報名 API 網址。如部署於其他網址，在 `ranking/index.html` 的設定區加入 `window.ROSTER_API_URL = 'https://your-signup.example'`。此值是網站網址，不能放 Token 或秘密。
 
-排點端 Realtime Database 安全規則必須允許獲授權團長讀寫 `/badminton` 及新欄位 `eventIntegration`，並實際阻擋其他人寫入。這些規則不在目前 repo，尚未驗證正式環境；不要為了讓匯入通過而開放公開寫入。新匯入使用 Firebase ETag 條件寫入：預覽後排點資料若有任何變化，停止套用並要求重新預覽。
+排點端安全規則只允許獲授權團長讀寫 `/rankingV1`，其他人不能直接讀寫。`docs/ranking-rules.example.json` 提供新增規則片段：填入核准的 Firebase UID，合併到現有 `rules` 下，不要整份覆蓋原有規則。球友透過唯讀 `/api/ranking-view` 取得公開欄位，不含付款、訊息或交接識別。保留自有資料庫既有 `/badminton`、`/session` 及提供者專案，不自動遷移。新匯入使用 Firebase ETag 條件寫入：預覽後排點資料若有任何變化，停止套用並要求重新預覽。
 
 交接回傳只包含活動、姓名、識別碼與固定／臨打身分，不包含手機、LINE 訊息或付款資料。報名端活動名單版本位於 `rosterHandoffs/{teamId}/{eventId}/{revision}`；現有 `session` 不被搬移，只增加 `rosterHandoff` 交接資料。`teamId` 由既有群組 ID 衍生，`eventId` 在團長明確確認後產生。
 
@@ -64,6 +64,12 @@ node --test tests/handoff.test.js
 
 ## 尚未包含
 
-完整活動建立／切換後台、歷史排點、多球團介面及完整模組權限、正式帳務、報名同名／代報新規則、固定球友恢復參加與退款，以及球員端繳費資訊隔離，仍需分次實作。舊名單存在同名時，這次交接會拒絕確認並提示先整理，不會猜測身分。
+完整活動建立／切換後台、歷史排點、多球團介面及完整模組權限、正式帳務、報名同名／代報新規則、固定球友恢復參加與退款，仍需分次實作。球友 QR 入口為唯讀，選姓名只做本機標示，報到／付款由團長確認；球友傳訊與偏好寫入入口不再開放。舊名單存在同名時，交接拒絕確認並提示先整理。
 
 本機修改不等於已部署。未完成授權設定與 Firebase 規則驗證前，不能宣稱正式串接已可使用。
+
+## 自有 Firebase 切換（2026-10-03）
+
+已核准新版使用 `badminton-scheduler-8a849` 的空白 `/rankingV1` 區域，保留舊資料。Google 登入驗證身分；團長權限仍由資料庫 UID 規則與報名 API 的 `ROSTER_MANAGER_UIDS` 分別限制。新增團長須同時更新兩處授權；尚無 Admin 管理介面。`RANKING_ORIGIN` 為 `https://arku1305.github.io`；Firebase 登入授權網域須含 `arku1305.github.io`。既有 `FIREBASE_DATABASE_URL` 須指向同一自有資料庫，服務帳戶保持原設定，不在程式加入憑證。
+
+本次切換不重設報名活動、不發 LINE 訊息、不新增付費方案。正式授權與匯入須另行驗證。

@@ -10,11 +10,17 @@
   let data = { players: [{ id: 'manual-c', name: '手動丙', level: 8, regular: false, checkedIn: false, paid: false }], currentMatch: { courts: [{ team1: [], team2: [] }, { team1: [], team2: [] }] }, roundNumbers: [1, 1] };
   const user = { getIdToken: async () => 'demo-token-not-a-real-credential' };
   window.firebase = { auth: () => ({ currentUser: user, onAuthStateChanged(callback) { queueMicrotask(() => callback(user)); return () => {}; }, async signOut() { alert('測試頁不需要登入；重新整理即可從頭測試。'); } }) };
+  window.RANKING_DATA_PATH = '/rankingV1';
   window.ROSTER_API_URL = window.location.origin;
   window.__TWEAKS__ = { theme: 'minimal', accent: '#8ff3b5' };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
   window.fetch = async function(input, options = {}) {
     const url = new URL(typeof input === 'string' ? input : input.url, window.location.href);
+    if (url.origin === window.location.origin && url.pathname === '/api/ranking-view') {
+      return json({ players: data.players.map(p => ({ id: p.id, name: p.name, level: p.level, games: p.games, regular: p.regular, checkedIn: p.checkedIn })),
+        court1: data.court1 || { team1: [], team2: [] }, court2: data.court2 || { team1: [], team2: [] },
+        currentMatch: data.currentMatch, roundNumbers: data.roundNumbers, eventIntegration: data.eventIntegration ? { eventTime: data.eventIntegration.eventTime } : null, callUp: data.callUp || {} });
+    }
     if (url.origin === window.location.origin && url.pathname === '/api/roster-handoff') {
       const fingerprint = 'demo-revision-' + revision;
       if (options.method === 'POST') {
@@ -24,8 +30,8 @@
       return json({ event, roster, fingerprint });
     }
     // Production URL is intercepted, never requested. CSP also blocks external connections.
-    if (url.hostname === 'badmintion-ranking-default-rtdb.asia-southeast1.firebasedatabase.app' && url.pathname.startsWith('/badminton')) {
-      const parts = url.pathname.replace(/^\/badminton/, '').replace(/\.json$/, '').split('/').filter(Boolean);
+    if (url.hostname === 'badminton-scheduler-8a849-default-rtdb.asia-southeast1.firebasedatabase.app' && url.pathname.startsWith('/rankingV1')) {
+      const parts = url.pathname.replace(/^\/rankingV1/, '').replace(/\.json$/, '').split('/').filter(Boolean);
       if (options.method === 'PUT') {
         if (options.headers?.['If-Match']) {
           if (rejectWrite) { rejectWrite = false; version++; return json({ message: '模擬版本變動' }, 412); }

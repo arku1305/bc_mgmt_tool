@@ -1,0 +1,6 @@
+{
+  "rankingV1": {
+    ".read": "auth != null && auth.uid === 'REPLACE_WITH_MANAGER_UID'",
+    ".write": "auth != null && auth.uid === 'REPLACE_WITH_MANAGER_UID'"
+  }
+}

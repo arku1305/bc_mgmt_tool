@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <title>排點介面</title>
+
+  <!-- 字型 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+  <style>
+  :root{
+    --bg: #131820;
+    --bg-2: #1a2029;
+    --bg-3: #232b36;
+    --line: #2a3340;
+    --text: #e8ecf1;
+    --muted: #8892a0;
+    --dim: #5b6472;
+    --court: #0f5a36;
+    --court-dark: #0a4428;
+    --court-line: #f3f6fa;
+    --active: #8ff3b5;
+    --me: #eab308;
+    --accent: #8ff3b5;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter','Noto Sans TC',-apple-system,sans-serif;height:100%;overflow:hidden;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;color:inherit}
+  /* 用 dvh（動態視窗高度）而非 vh：平板/手機瀏覽器的 100vh 是「網址列隱藏時」
+     的最大高度，會比實際可見範圍大，導致橫向時底部內容被切掉又無法捲動。 */
+  #root{height:100dvh;width:100vw}
+
+  /* ── 拖曳元素 ──────────────────────────────────────────────────
+     注意：這裡刻意「不」設 touch-action: none。
+     設了雖然拖曳會動，但手指按在球員卡片上就無法捲動頁面。
+     改用 manipulation：捲動保持正常，長按 250ms 才進入拖曳模式，
+     拖曳期間再由 JS 動態攔截 touchmove 阻止捲動。 */
+  [data-drop]{
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* 拖曳進行中：用 touch-action:none 阻止「手指」直接捲動（實際攔截由 JS 的
+     touchmove blocker 負責），但「不」再設 overflow:hidden ——
+     否則邊緣自動捲動（把球員拖到畫面外的場地）會被鎖死無法程式化捲動。 */
+  body.dnd-active{
+    touch-action: none;
+  }
+
+  /* ── 拖曳時跟隨手指的浮動卡片（取代 HTML5 原生拖曳影像） ── */
+  .dnd-ghost{
+    position: fixed;
+    left: 0; top: 0;
+    transform: translate3d(0,0,0) translate(-50%, -50%) scale(1.06);
+    will-change: transform;
+    z-index: 99999;
+    pointer-events: none;
+    background: var(--accent);
+    color: #0a0e14;
+    font-family: 'Noto Sans TC','Inter',sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    padding: 12px 18px;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+    opacity: 0.94;
+    white-space: nowrap;
+  }
+
+  /* 直向（手機 + 平板）：與 main.js 的 isPortrait 判斷保持一致 */
+  @media (max-width: 1180px) and (orientation: portrait) {
+    html, body { overflow: auto; }
+    #root { height: 100dvh; }
+  }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- 版本全部鎖定：Babel 必須留在 7.x，8.x 預設改用 automatic JSX runtime 會讓整頁全白 -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.0/babel.min.js"></script>
+
+  <!-- Firebase Authentication（管理者登入用） -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <script>
+    // ════════════════════════════════════════════════════════════════════
+    // Firebase 設定
+    // 專案：badmintion-ranking（asia-southeast1）
+    // 這串金鑰公開在前端是 Firebase 的正常設計，不是安全漏洞。
+    // 真正的防護來自 Realtime Database 的安全規則（見 README）。
+    // ════════════════════════════════════════════════════════════════════
+    firebase.initializeApp({
+      apiKey: "AIzaSyBeoYWIBzBR6UVY8tTBrhlEi1xYC2ww38M",
+      authDomain: "badmintion-ranking.firebaseapp.com",
+      databaseURL: "https://badmintion-ranking-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "badmintion-ranking",
+      storageBucket: "badmintion-ranking.firebasestorage.app",
+      messagingSenderId: "76782338503",
+      appId: "1:76782338503:web:457b500cf579dd9914d9e2"
+    });
+
+    // 登入狀態保留在瀏覽器，關掉分頁再打開不用重新登入
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  </script>
+
+  <!-- 全域設定 -->
+  <script>
+    const TWEAKS = /*EDITMODE-BEGIN*/{
+      "theme": "minimal",
+      "accent": "#8ff3b5",
+      "myName": ""
+    }/*EDITMODE-END*/;
+    window.__TWEAKS__ = TWEAKS;
+  </script>
+
+  <!-- 模組載入順序。?v= 是版本號：每次更新 main.js 時遞增，讓瀏覽器抓到新版
+       （GitHub Pages 會快取 main.js，不加版本號會一直用舊的、需強制重新整理）。 -->
+  <script type="text/babel" data-presets="react" src="main.js?v=20261002-1"></script>
+</body>
+</html>

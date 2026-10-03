@@ -1,0 +1,47 @@
+# Environment variables (including local and production secrets)
+.env
+.env.*
+
+# Firebase Admin / Google Cloud service account credentials
+firebase-key.json
+firebase-key*.json
+*firebase-adminsdk*.json
+*service-account*.json
+*service_account*.json
+*serviceAccount*.json
+*ServiceAccount*.json
+credentials.json
+application_default_credentials.json
+# Keep arbitrarily named credential JSON files in these directories.
+secrets/
+credentials/
+
+# Private keys and certificate bundles
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Local deployment configuration and dependencies
+.vercel/
+.firebase/
+.npmrc
+node_modules/
+
+# Build output, coverage, and runtime logs
+dist/
+build/
+coverage/
+*.log
+
+# OS and editor temporary files
+.DS_Store
+._*
+Thumbs.db
+*.swp
+*.swo
+*~

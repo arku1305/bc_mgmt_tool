@@ -14,7 +14,7 @@ function publicSchedule(data) {
     currentMatch: { courts: (Array.isArray(data.currentMatch?.courts) ? data.currentMatch.courts : []).map(court) },
     roundNumbers: Array.isArray(data.roundNumbers) ? data.roundNumbers : [1, 1],
     callUp: Object.fromEntries(Object.entries(data.callUp || {}).map(([key, value]) => [key, pick(value, ['kind', 'ids', 'court', 'time'])])),
-    eventIntegration: data.eventIntegration ? pick(data.eventIntegration, ['eventTime']) : null,
+    eventIntegration: data.eventIntegration ? pick(data.eventIntegration, ['eventTime', 'teamName', 'location']) : null,
   };
 }
 module.exports = { publicSchedule };

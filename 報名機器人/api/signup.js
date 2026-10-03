@@ -1,37 +1,27 @@
-// api/signup.js — 網頁報名
-const {
-  getWalkIns, getSession,
-  findFirstEmpty, getEffectiveMaxSlots, db,
-} = require('./_lib');
-
+const { db } = require('./_lib');
+const { publicPaths } = require('../lib/access-service');
+const { publicCommand } = require('../lib/public-command');
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end();
-
-  const { name, phone } = req.body;
-  if (!name || !phone) return res.json({ success: false, message: '請填寫完整資料' });
-  if (!/^09\d{8}$/.test(phone)) return res.json({ success: false, message: '手機號碼格式錯誤' });
-
   try {
-    const session = await getSession();
-    const effectiveMaxSlots = getEffectiveMaxSlots(session);
-    const walkIns = await getWalkIns(effectiveMaxSlots);
-
-    const exists = walkIns.find(v => v && (v.name === name || v.phone === phone));
-    if (exists) return res.json({ success: false, message: `${name} 已經報名過了` });
-
-    const slotIndex = findFirstEmpty(walkIns);
-    if (slotIndex === -1) return res.json({ success: false, message: '名額已滿' });
-
-    const entry = { name, phone, source: 'web', time: Date.now() };
-    await db.ref(`session/walkIns/${slotIndex}`).set(entry);
-
-    res.json({ success: true });
-  } catch (e) {
-    console.error('網頁報名錯誤', e);
-    res.status(500).json({ success: false, message: '伺服器錯誤' });
-  }
+    let message;
+    const now = Date.now();
+    const scope = await publicPaths(db, req.body?.team, req.body?.eventId);
+    if (!scope) return res.status(400).json({ success: false, message: '請使用團長提供的球團報名連結' });
+    if (scope.registrationAllowed === false) return res.status(409).json({success:false,message:'本場已結束、暫停或尚未開放報名'});
+    if (!scope.registration) return res.status(400).json({ success: false, message: '請先選擇活動' });
+    const ref = db.ref(scope.registration + (scope.directSession ? '' : '/current'));
+    await ref.once('value');
+    const result = await ref.transaction(value => {
+      message = null;
+      try {
+        const next = publicCommand(value, 'signup', req.body || {}, now);
+        return scope.model === 2 ? require('../lib/club-model').stamp(next) : next;
+      }
+      catch (error) { message = error.message; return; }
+    });
+    if (!result.committed) return res.status(409).json({ success: false, message: message || '資料已更新，請重試' });
+    return res.json({ success: true });
+  } catch (_) { return res.status(500).json({ success: false, message: '暫時無法處理，請重新整理確認名單' }); }
 };

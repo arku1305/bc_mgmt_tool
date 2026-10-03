@@ -1,4 +1,5 @@
 const { db } = require('./_lib');
+const { publicPaths } = require('../lib/access-service');
 const { publicSchedule } = require('./_ranking');
 
 module.exports = async (req, res) => {
@@ -17,7 +18,10 @@ module.exports = async (req, res) => {
     return res.status(503).json({ message: '排點查看尚未完成設定' });
   }
   try {
-    const data = (await db.ref('rankingV1').once('value')).val();
+    const scope = await publicPaths(db, req.query?.team, req.query?.event);
+    if (!scope) return res.status(400).json({ message: '請使用團長提供的排點查看連結' });
+    if (!scope.ranking) return res.status(400).json({ message: '請使用排點網站提供的查看連結' });
+    const data = (await db.ref(scope.ranking).once('value')).val();
     return res.json(publicSchedule(data));
   } catch (_) { return res.status(500).json({ message: '排點暫時無法載入，請稍後重試' }); }
 };

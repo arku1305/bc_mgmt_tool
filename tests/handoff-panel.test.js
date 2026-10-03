@@ -6,7 +6,7 @@ const path = require('node:path');
 const babelPath = process.env.BABEL_BUNDLE;
 
 // Component handler tests with a lightweight hook host; not a browser/layout test.
-function fixture(writeStatus = 200) {
+function fixture(writeStatus = 200, oldEvent = false) {
   const { babelTransform } = require(babelPath);
   const code = babelTransform(fs.readFileSync(path.join(__dirname, '../ranking/handoff-panel.jsx'), 'utf8'), 'handoff-panel.jsx', false, [], []).code;
   const state = [], effects = []; let cursor = 0, rendered = false;
@@ -15,7 +15,7 @@ function fixture(writeStatus = 200) {
   const roster = [{ name: '測試甲', registrationId: 'guest-a', participantType: 'guest' }];
   const draft = { event, roster, fingerprint: 'revision' };
   const packet = { schemaVersion: 1, event, roster, revision: 'revision' };
-  const ranking = { players: [], court1: { team1: [], team2: [] }, currentMatch: { courts: [] }, messages: { keep: true } };
+  const ranking = { ...(oldEvent ? { eventIntegration: { eventId: 'old-event', teamId: 'team-test', eventTime: '前一場' }, players: [{ id: 'old-manual', name: '舊手動球友', paid: true, level: 9 }] } : { players: [] }), court1: { team1: [], team2: [] }, currentMatch: { courts: [] }, messages: { keep: true } };
   const jsx = (type, props) => ({ type, props: props || {} });
   const context = {
     React: {
@@ -25,6 +25,8 @@ function fixture(writeStatus = 200) {
     require() { return { jsx, jsxs: jsx, Fragment: 'fragment' }; },
     window: { RosterHandoff: require('../ranking/handoff'), ROSTER_API_URL: 'https://signup.test' },
     firebase: { auth: () => ({ currentUser: { getIdToken: async () => 'fake-token' } }) },
+    Date,
+    rankingUrl: () => 'https://ranking.test/api/registration-admin?scope=ranking',
     FIREBASE_URL: 'https://ranking.test/badminton',
     async fetch(url, options = {}) {
       calls.push({ url, options });
@@ -74,4 +76,17 @@ test('交接畫面：排點版本衝突或拒絕寫入，不顯示成功、不�
     assert.equal(ui.applied, null); assert.equal(ui.closed, false);
     assert.match(ui.text(), status === 412 ? /排點資料已被調整/ : /匯入未成功/);
   }
+});
+
+test('換場必須明確保存上一場後預覽，舊人工設定與繳費紀錄存檔且仍受版本保護', { skip: !babelPath && '需要 BABEL_BUNDLE' }, async () => {
+  const ui = fixture(200, true); await ui.start();
+  await ui.click('確認名單並預覽匯入差異');
+  assert.match(ui.text(), /排點仍屬於上一場/);
+  assert.equal(ui.calls.filter(c => c.options.method === 'PUT').length, 0);
+  await ui.click('保存上一場，預覽新活動');
+  await ui.click('套用選取的變更');
+  const saved = JSON.parse(ui.calls.find(c => c.options.method === 'PUT').options.body);
+  assert.equal(Object.values(saved.activityArchives)[0].players[0].paid, true);
+  assert.equal(Object.values(saved.activityArchives)[0].players[0].level, 9);
+  assert.equal(saved.players[0].name, '測試甲'); assert.equal(saved.players.some(p => p.id === 'old-manual'), false);
 });

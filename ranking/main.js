@@ -6,9 +6,9 @@
 const DEFAULT_PLAYERS = [];
 
 const DEFAULT_EVENT = {
-  day: 'TUE',
-  time: '20:00–22:00',
-  location: '南科新力羽球館',
+  day: '',
+  time: '尚未匯入活動',
+  location: '',
 };
 
 window.DEFAULT_PLAYERS = DEFAULT_PLAYERS;
@@ -563,7 +563,7 @@ function Court({ index, teamA = [], teamB = [], meId, theme, accent, round, onNe
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 10, color: 'var(--muted)',
             letterSpacing: 1.5, fontWeight: 700,
-          }}>{index + 7}號場</div>
+          }}>{index + 1}號場</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
             <span style={{
               fontSize: 10, color: 'var(--dim)',
@@ -1625,7 +1625,7 @@ function PlayerRow({ player, onCourt, isMe, theme, accent, isAdmin, onBeginEdit,
             >{checkedIn ? '✓ 報到' : '報到'}</button>
           )}
           {/* 季繳球員免逐場繳費，故只有「非季繳」的球員才顯示繳費徽章 */}
-          {isAdmin && player.seasonPass !== true && (
+          {isAdmin && player.seasonPass !== true && player.participantType !== 'fixed' && (
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePaid && onTogglePaid(player.id); }}
               style={chip(player.paid === true, '#fbbf24')}
@@ -1744,7 +1744,7 @@ function JoinScreen({ onJoin, onSkip, theme, accent, role, players, onCheckIn })
               fontSize: 10, color: 'var(--dim)', marginTop: 2,
               fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1,
             }}>
-              星期二 · 20:00–22:00 · 南科新力羽球館
+              活動資訊以團長設定與匯入結果為準
             </div>
           </div>
         </div>
@@ -1753,7 +1753,7 @@ function JoinScreen({ onJoin, onSkip, theme, accent, role, players, onCheckIn })
           margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: 0.5,
           fontFamily: "'Noto Sans TC', sans-serif",
         }}>
-          {isPlayer ? '加入怕乙球的活動' : '開啟活動（團長）'}
+          {isPlayer ? '查看球團的活動' : '開啟活動（團長）'}
         </h2>
         <p style={{
           margin: '0 0 22px', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6,
@@ -2307,7 +2307,7 @@ function HistoryPanel({ accent, history, onClose }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.5 }}>
-                    第 {h.round} 輪 · {h.court + 7}號場
+                    第 {h.round} 輪 · {h.court + 1}號場
                   </span>
                   <span style={{ fontSize: 10, color: 'var(--dim)', fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.time)}</span>
                 </div>
@@ -2334,20 +2334,22 @@ function HistoryPanel({ accent, history, onClose }) {
 // ════════════════════════════════════════════════════════════════════════════
 var FIREBASE_URL = 'https://badminton-scheduler-8a849-default-rtdb.asia-southeast1.firebasedatabase.app' + (window.RANKING_DATA_PATH || '/rankingV1');
 var RANKING_PLAYER_VIEW = new URLSearchParams(window.location.search).has('player');
+var PRIVATE_RANKING_URL = (window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app').replace(/\/$/, '') + '/api/registration-admin?scope=ranking';
+function rankingUrl(path) { var scope = window.__RANKING_SCOPE__; return PRIVATE_RANKING_URL + '&path=' + encodeURIComponent(path || '') + (scope ? '&club=' + encodeURIComponent(scope.clubId) + '&event=' + encodeURIComponent(scope.eventId) : ''); }
 var PUBLIC_SCHEDULE_URL = (window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app').replace(/\/$/, '') + '/api/ranking-view';
 
 function fbGet(path) {
   // 球友僅能取得伺服器明確允許的公開欄位，沒有付款或訊息資料。
   if (RANKING_PLAYER_VIEW) {
-    return fetch(PUBLIC_SCHEDULE_URL, { cache: 'no-store' }).then(function(r) {
+    return fetch(PUBLIC_SCHEDULE_URL + '?team=' + encodeURIComponent(new URLSearchParams(window.location.search).get('team') || '') + '&event=' + encodeURIComponent(new URLSearchParams(window.location.search).get('event') || ''), { cache: 'no-store' }).then(function(r) {
       if (!r.ok) throw new Error('排點資訊暫時無法載入');
       return r.json();
     }).then(function(data) { return path ? data[path.slice(1)] : data; }).catch(function() { return null; });
   }
   // 管理端讀取私有資料。
   var token = window.__AUTH_TOKEN__;
-  var url = FIREBASE_URL + path + '.json' + (token ? '?auth=' + token : '');
-  return fetch(url)
+  var url = rankingUrl(path);
+  return fetch(url, { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
     .then(function(r) { return r.ok ? r.json() : null; })
     .catch(function() { return null; });
 }
@@ -2356,10 +2358,10 @@ function fbGet(path) {
 function fbPut(path, data) {
   var token = window.__AUTH_TOKEN__;
   if (RANKING_PLAYER_VIEW || !token) return Promise.resolve(false);
-  var url = FIREBASE_URL + path + '.json?auth=' + encodeURIComponent(token);
+  var url = rankingUrl(path);
   return fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify(data),
   }).then(function(response) {
     if (!response.ok) throw new Error('寫入失敗');
@@ -2602,6 +2604,10 @@ function App() {
   // ── 認證狀態：完全交給 Firebase Auth，不再自行用 localStorage 記錄 ─────
   const [authenticated, setAuthenticated] = React.useState(false);
   const [authReady, setAuthReady] = React.useState(false);
+  const [moduleAccess, setModuleAccess] = React.useState({ registration: true, ranking: true });
+  const [platformRole, setPlatformRole] = React.useState('organizer');
+  const [share, setShare] = React.useState('');
+  const [rankingScope, setRankingScope] = React.useState(null);
   const [accessError, setAccessError] = React.useState('');
 
   React.useEffect(function() {
@@ -2614,9 +2620,14 @@ function App() {
       setAuthReady(false); setAccessError('');
       try {
         const token = await user.getIdToken();
-        const response = await fetch(FIREBASE_URL + '.json?auth=' + encodeURIComponent(token), { cache: 'no-store' });
+        const response = await fetch((window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app') + '/api/registration-admin?scope=access', { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
         if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? '這個 Google 帳號尚未獲得團長權限，請切換至已核准帳號。' : '無法確認團長權限，請稍後重試。');
         if (!active || request !== generation) return;
+        const access = await response.json();
+        setModuleAccess(access.modules || { registration: true, ranking: true }); setPlatformRole(access.role);
+        var savedScope = null;
+        if (window.REGISTRATION_V2) { try { savedScope = JSON.parse(sessionStorage.getItem('rankingScope:' + user.uid) || 'null'); } catch (_) {} }
+        window.__RANKING_SCOPE__ = savedScope; setRankingScope(savedScope); setShare(savedScope ? savedScope.publicToken : access.publicToken || '');
         window.__AUTH_TOKEN__ = token;
         setAuthenticated(true);
       } catch (err) {
@@ -2627,6 +2638,22 @@ function App() {
     });
     return function() { active = false; unsubscribe(); };
   }, []);
+
+  React.useEffect(function() {
+    if (!authenticated) return;
+    let active = true;
+    async function refreshAccess() {
+      try {
+        const response = await fetch((window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app') + '/api/registration-admin?scope=access', { cache: 'no-store', headers: { Authorization: 'Bearer ' + window.__AUTH_TOKEN__ } });
+        if (!active) return;
+        if (response.status === 401 || response.status === 403) { window.__AUTH_TOKEN__ = null; setAuthenticated(false); setAccessError('團長權限已移除，請聯絡平台 Admin。'); return; }
+        if (response.ok) { const access = await response.json(); if (active) setModuleAccess(access.modules || { registration: true, ranking: true }); }
+      } catch (_) {}
+    }
+    const timer = setInterval(refreshAccess, 15000);
+    window.addEventListener('focus', refreshAccess);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refreshAccess); };
+  }, [authenticated]);
 
   // ID Token 有效期約 1 小時，每 30 分鐘主動更新，避免排點到一半寫入失敗
   React.useEffect(function() {
@@ -2655,6 +2682,7 @@ function App() {
   }, []);
 
   const isAdmin = role === 'admin';
+  const [managementView, setManagementView] = React.useState(new URLSearchParams(window.location.search).get('view') === 'ranking' ? 'ranking' : 'registration');
   const showLock = isAdmin && authReady && !authenticated;
 
   // ── 內部工具：將 courts 陣列轉成 match 物件，呼叫三個儲存函式 ────────────
@@ -2736,8 +2764,12 @@ function App() {
 
   // ── 啟動時從 Firebase 載入資料 ───────────────────────────────────────────
   React.useEffect(function() {
-    if (role === 'admin' && (!authReady || !authenticated)) return;
+    if (role === 'admin' && (!authReady || !authenticated || moduleAccess.ranking === false)) return;
+    var active = true;
     loadData().then(function(data) {
+      if (!active) return;
+      setCourts([{ teamA: [], teamB: [] }, { teamA: [], teamB: [] }]);
+      setRoundNumbers([1, 1]);
       if (!data && role === 'player') setScheduleError('目前無法載入排點，請確認網路後重新整理。');
       else setScheduleError('');
       var pArr = (data && Array.isArray(data.players))
@@ -2781,11 +2813,12 @@ function App() {
         setJoined(false);
       }
     });
-  }, [role, authReady, authenticated]);
+    return function() { active = false; };
+  }, [role, authReady, authenticated, moduleAccess.ranking, rankingScope]);
 
   // Read-only notice: no LINE push and no automatic import.
   React.useEffect(function() {
-    if (!authenticated || role !== 'admin' || !eventIntegration) {
+    if (!authenticated || role !== 'admin' || !eventIntegration || moduleAccess.registration === false || moduleAccess.ranking === false) {
       setRegistrationChanged(false); return;
     }
     var active = true;
@@ -2793,7 +2826,7 @@ function App() {
       try {
         var token = await firebase.auth().currentUser.getIdToken();
         var base = window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app';
-        var response = await fetch(base + '/api/roster-handoff', { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
+        var response = await fetch(base + '/api/roster-handoff' + (rankingScope ? '?club=' + encodeURIComponent(rankingScope.clubId) + '&event=' + encodeURIComponent(rankingScope.eventId) : ''), { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
         if (response.ok) {
           var draft = await response.json();
           if (active) setRegistrationChanged(draft.fingerprint !== eventIntegration.revision);
@@ -2805,14 +2838,14 @@ function App() {
     checkRoster();
     var interval = setInterval(checkRoster, 30000);
     return function() { active = false; clearInterval(interval); };
-  }, [authenticated, role, eventIntegration]);
+  }, [authenticated, role, eventIntegration, moduleAccess.registration, moduleAccess.ranking, rankingScope]);
 
   // ── 球員加入網址 ────────────────────────────────────────────────────────
   // 從管理者目前所在的網址自動推導（同一個部署 + ?player），
   // 不再寫死舊網址；日後換網域 / 路徑也不用改程式，QR 永遠指向現在這一版。
   var playerUrl = React.useMemo(function() {
-    return window.location.origin + window.location.pathname + '?player';
-  }, []);
+    return window.location.origin + window.location.pathname + '?player&team=' + encodeURIComponent(share) + (rankingScope ? '&event=' + encodeURIComponent(rankingScope.eventId) : '');
+  }, [share, rankingScope]);
 
   React.useEffect(function() {
     var handler = function(e) {
@@ -2841,22 +2874,23 @@ function App() {
 
   // ── 管理者模式：每 3 秒讀取 /players 更新名單，並收球員訊息 ────────────────
   React.useEffect(function() {
-    if (role !== 'admin' || !authenticated) return;
+    if (role !== 'admin' || !authenticated || moduleAccess.ranking === false) return;
+    var active = true;
     function tick() {
       fbGet('/players').then(function(data) {
-        if (Array.isArray(data)) setPlayers(data.map(window.normalizePlayer));
+        if (active && Array.isArray(data)) setPlayers(data.map(window.normalizePlayer));
       });
       fbGet('/messages').then(function(data) {
-        setMessages(messagesToArray(data));
+        if (active) setMessages(messagesToArray(data));
       });
       fbGet('/history').then(function(data) {
-        setHistory(historyToArray(data));
+        if (active) setHistory(historyToArray(data));
       });
     }
     tick();
     var interval = setInterval(tick, 3000);
-    return function() { clearInterval(interval); };
-  }, [role, authenticated]);
+    return function() { active = false; clearInterval(interval); };
+  }, [role, authenticated, moduleAccess.ranking, rankingScope]);
 
   // ── 球員模式：立刻讀取一次，之後每 2 秒輪詢 ─────────────────────────────
   React.useEffect(function() {
@@ -2948,7 +2982,7 @@ function App() {
     playDingDong();
     var names = lineup.map(function(p) { return p.name; });
     setTimeout(function() {
-      speakLineup(courtIdx + 7, names, 2, function() { if (myGen === __duckGen) stopDuck(); }); // 唸完解除壓音
+      speakLineup(courtIdx + 1, names, 2, function() { if (myGen === __duckGen) stopDuck(); }); // 唸完解除壓音
     }, 750);
     // 保險：15 秒內若沒正常收尾就強制解除（且只解除自己這一輪的）
     setTimeout(function() { if (myGen === __duckGen) stopDuck(); }, 15000);
@@ -3329,6 +3363,23 @@ function App() {
     );
   }
 
+  const managementNav = isAdmin && <nav aria-label="團長管理導覽" style={{ display: 'flex', gap: 8, padding: '10px 16px', background: '#17231d', color: '#edf4f0', alignItems: 'center' }}>
+    <strong style={{ marginRight: 8 }}>球團管理</strong>
+    {(platformRole === 'platformAdmin' ? ['registration', 'ranking', 'permissions'] : ['registration', 'ranking']).map(v => <button key={v} onClick={() => setManagementView(v)} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #42534a', background: managementView === v ? '#8ff3b5' : '#22362c', color: managementView === v ? '#0c1016' : '#edf4f0', cursor: 'pointer' }}>{v === 'registration' ? '報名管理' : v === 'ranking' ? '排點管理' : '權限管理'}</button>)}
+    <button onClick={handleLogout} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: '#edf4f0', cursor: 'pointer' }}>登出</button>
+  </nav>;
+  function appliedRegistration(list, binding, switched) {
+    if (switched) { window.location.reload(); return; }
+    setPlayers(list.map(window.normalizePlayer)); setEventIntegration(binding); setManagementView('ranking');
+  }
+  if (isAdmin && moduleAccess[managementView] === false) return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', color: '#edf4f0' }}>{managementNav}<p style={{ padding: 24 }}>{managementView === 'registration' ? '報名管理' : '排點管理'}已停止使用，請聯絡平台 Admin。</p></div>;
+  if (isAdmin && managementView === 'permissions' && platformRole === 'platformAdmin') return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016' }}>{managementNav}<PermissionsAdmin /></div>;
+  if (isAdmin && managementView === 'registration') return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', overflow: 'hidden' }}>
+    {managementNav}
+    {window.REGISTRATION_V2 ? <ClubRegistrationAdmin onImport={function(scope) { if (moduleAccess.ranking === false) { alert('排點管理已停止使用，請聯絡平台 Admin。'); return; } window.__RANKING_SCOPE__ = scope; sessionStorage.setItem('rankingScope:' + firebase.auth().currentUser.uid, JSON.stringify(scope)); setRankingScope(scope); setShare(scope.publicToken); setActivityOpen(true); }} /> : <RegistrationAdmin onImport={() => setActivityOpen(true)} />}
+    {activityOpen && <ActivityHandoffPanel scope={rankingScope} onClose={() => setActivityOpen(false)} onApplied={appliedRegistration} />}
+  </div>;
+
   if (!joined) {
     return (
       <React.Fragment>
@@ -3350,6 +3401,7 @@ function App() {
         ? '#0c1016'
         : 'radial-gradient(ellipse at 20% 0%, #1a2533 0%, #131820 60%, #0c1016 100%)',
     }}>
+      {managementNav}
       <TopBar
         theme={tweaks.theme}
         accent={tweaks.accent}
@@ -3357,7 +3409,7 @@ function App() {
         onShowQR={function() { setQROpen(true); }}
         onLogout={handleLogout}
         role={role}
-        eventInfo={{ day: eventIntegration ? '活動' : 'TUE', time: eventIntegration ? eventIntegration.eventTime : '20:00-22:00', location: '南科新力羽球館' }}
+        eventInfo={{ day: eventIntegration ? '活動' : '', time: eventIntegration ? eventIntegration.eventTime : '尚未匯入活動', location: eventIntegration?.location || '' }}
       />
 
       {scheduleError && <div role="alert" style={{ background: '#463a20', color: '#ffe0a0', padding: 10 }}>{scheduleError}</div>}
@@ -3432,7 +3484,7 @@ function App() {
 
       <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
 
-      {activityOpen && isAdmin && <ActivityHandoffPanel onClose={function() { setActivityOpen(false); }} onApplied={function(list, binding) { setPlayers(list.map(window.normalizePlayer)); setEventIntegration(binding); }} />}
+      {activityOpen && isAdmin && <ActivityHandoffPanel scope={rankingScope} onClose={function() { setActivityOpen(false); }} onApplied={appliedRegistration} />}
       {qrOpen && <QRDialog url={playerUrl} onClose={function() { setQROpen(false); }} accent={tweaks.accent} />}
 
       {/* 浮動訊息鈕：球員＝傳訊給主辦；管理者＝收件匣(未讀紅點) */}
@@ -3516,7 +3568,7 @@ function App() {
           <div style={{
             fontSize: 40, fontWeight: 900, color: '#fff',
             fontFamily: "'JetBrains Mono','Noto Sans TC', monospace",
-          }}>{alertInfo.court + 7} 號場</div>
+          }}>{alertInfo.court + 1} 號場</div>
           <button
             onClick={function() { setAlertInfo(null); stopTitleFlash(); }}
             style={{

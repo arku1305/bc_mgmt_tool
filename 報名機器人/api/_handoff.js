@@ -14,7 +14,7 @@ function draftRoster(session, fixedMembers, teamId) {
   const entries = Object.values(session.walkIns || {}).filter(entry => entry && entry.name);
   entries.forEach(entry => {
     roster.push({
-      registrationId: 'guest-' + digest([entry.name, entry.source, entry.time]).slice(0, 24),
+      registrationId: entry.registrationId || 'guest-' + digest([entry.name, entry.source, entry.time]).slice(0, 24),
       name: entry.name.trim(), participantType: fixedMembers.includes(entry.name.trim()) ? 'fixed' : 'guest',
     });
   });
@@ -24,7 +24,7 @@ function draftRoster(session, fixedMembers, teamId) {
     names.add(person.name);
   });
   roster.sort((a, b) => a.registrationId.localeCompare(b.registrationId));
-  const event = { teamId, eventTime: session.eventTime };
+  const event = { teamId, eventTime: session.eventTime, ...(session.activityId ? { eventId: session.activityId, teamName: session.teamName, location: session.location, guestFee: session.guestFee, fixedFee: session.fixedFee } : {}) };
   return { event, roster, fingerprint: digest({ event, roster }) };
 }
 

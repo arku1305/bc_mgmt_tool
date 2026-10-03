@@ -1,6 +1,22 @@
 {
   "rankingV1": {
-    ".read": "auth != null && auth.uid === 'REPLACE_WITH_MANAGER_UID'",
-    ".write": "auth != null && auth.uid === 'REPLACE_WITH_MANAGER_UID'"
+    ".read": false,
+    ".write": false
+  },
+  "teamsV1": {
+    ".read": false,
+    ".write": false
+  },
+  "accessV1": {
+    ".read": false,
+    ".write": false
+  },
+  "teamSharesV1": {
+    ".read": false,
+    ".write": false
+  },
+  "publicTeamsV1": {
+    ".read": false,
+    ".write": false
   }
 }

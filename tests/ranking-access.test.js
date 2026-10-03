@@ -25,6 +25,7 @@ function viewApi(envOverrides = {}) {
   const env = { RANKING_ORIGIN: 'https://ranking.example', RANKING_AUTH_PROJECT_ID: 'badminton-scheduler-8a849', FIREBASE_DATABASE_URL: 'https://badminton-scheduler-8a849-default-rtdb.asia-southeast1.firebasedatabase.app', ...envOverrides };
   const paths = [];
   const context = { module: { exports: {} }, process: { env }, require(name) {
+    if (name === '../lib/access-service') return { publicPaths: async () => ({ ranking: 'rankingV1' }) };
     if (name === './_lib') return { db: { ref(path) { paths.push(path); return { async once() { return { val: () => ({ players: [{ id: 'a', name: '虛構甲', paid: true }] }) }; } }; } } };
     if (name === './_ranking') return { publicSchedule };
     throw new Error('Unexpected module');
@@ -63,6 +64,6 @@ test('球友瀏覽器不讀私有 Firebase，登入過團長帳號也不能透�
   const players = await context.fbGet('/players');
   assert.equal(players[0].paid, undefined);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\/api\/ranking-view$/);
+  assert.match(calls[0].url, /\/api\/ranking-view\?team=/);
   assert.equal(calls[0].url.includes('auth='), false);
 });

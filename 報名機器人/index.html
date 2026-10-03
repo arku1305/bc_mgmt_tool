@@ -243,11 +243,10 @@
 <div class="container">
 
   <div class="header">
-    <div class="badge">2026 Q4 · 10–12月</div>
+    <div class="badge" id="team-name">球團報名</div>
     <h1>羽球<span>報名</span></h1>
     <p class="subtitle">
-      新力羽球南科館 第7、8場地<br>
-      費用 $200｜KOMBO No.1 一級天然鵝毛
+      活動資訊由團長建立；固定球友預設參加。
     </p>
   </div>
 
@@ -259,15 +258,15 @@
     </div>
     <div class="info-item">
       <label>地點</label>
-      <span>南科館 7、8場</span>
+      <span id="event-location">—</span>
     </div>
     <div class="info-item">
       <label>費用</label>
-      <span>$200 / 人</span>
+      <span id="event-fee">—</span>
     </div>
     <div class="info-item">
-      <label>用球</label>
-      <span>KOMBO No.1</span>
+      <label>報名狀態</label>
+      <span id="event-status">讀取中</span>
     </div>
   </div>
 
@@ -281,13 +280,13 @@
   <!-- Full banner -->
   <div class="full-banner" id="full-banner">
     <div class="icon">🏸</div>
-    <p>本週名額已額滿</p>
-    <small>如需候補請聯繫管理員</small>
+    <p>本次名額已額滿</p>
+    <small>請聯絡團長確認後續安排</small>
   </div>
 
   <!-- Tabs -->
   <div class="tabs" id="form-tabs">
-    <button class="tab-btn active" onclick="switchTab('signup')">我要報名</button>
+    <button id="tab-signup" class="tab-btn active" onclick="switchTab('signup')">我要報名</button>
     <button class="tab-btn" onclick="switchTab('cancel')">取消報名</button>
   </div>
 
@@ -298,7 +297,7 @@
   <div class="form-card" id="form-signup">
     <div class="form-group">
       <label>姓名</label>
-      <input type="text" id="signup-name" placeholder="請輸入姓名" maxlength="20">
+      <input type="text" id="signup-name" placeholder="請輸入姓名" maxlength="40">
     </div>
     <div class="form-group">
       <label>手機號碼（用於取消報名驗證）</label>
@@ -311,7 +310,7 @@
   <div class="form-card hidden" id="form-cancel">
     <div class="form-group">
       <label>姓名（與報名時相同）</label>
-      <input type="text" id="cancel-name" placeholder="請輸入姓名" maxlength="20">
+      <input type="text" id="cancel-name" placeholder="請輸入姓名" maxlength="40">
     </div>
     <div class="form-group">
       <label>手機號碼（驗證用）</label>
@@ -331,6 +330,9 @@
   // ⚙️  設定區：填入你的 Firebase 專案資訊
   // ======================================================
   const API_URL = window.location.origin;
+  let requestedEvent = new URLSearchParams(location.search).get('event') || '';
+  const teamToken = new URLSearchParams(location.search).get('team') || '';
+  let loadedEvent = null;
   // ======================================================
 
   let currentSlots = 0;
@@ -339,9 +341,26 @@
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${API_URL}/api/status`);
+      const res = await fetch(`${API_URL}/api/status?event=${encodeURIComponent(requestedEvent)}&team=${encodeURIComponent(teamToken)}`, { cache: 'no-store' });
       const data = await res.json();
-      if (!data) return;
+      if (!res.ok || !data) throw new Error('讀取失敗');
+      if (data.activities) {
+        let choices = document.getElementById('activity-choices');
+        if (!choices) { choices = document.createElement('div'); choices.id = 'activity-choices'; document.getElementById('event-time').parentElement.after(choices); }
+        choices.replaceChildren();
+        const title = document.createElement('p'); title.textContent = '請選擇本次報名活動'; choices.append(title);
+        data.activities.forEach(activity => {
+          const button = document.createElement('button'); button.type = 'button'; button.textContent = activity.teamName + ' · ' + activity.eventTime + (activity.registrationOpen ? '（開放）' : '（暫停）');
+          button.style.cssText = 'display:block;width:100%;margin:8px 0;padding:12px';
+          button.onclick = () => { requestedEvent = activity.eventId; const url = new URL(location.href); url.searchParams.set('event', requestedEvent); location.href = url.toString(); };
+          choices.append(button);
+        });
+      }
+      loadedEvent = data.eventId || null;
+      document.getElementById('team-name').textContent = data.teamName || '球團報名';
+      document.getElementById('event-location').textContent = data.location || '—';
+      document.getElementById('event-fee').textContent = data.guestFee == null ? '—' : '$' + data.guestFee + ' / 人';
+      document.getElementById('event-status').textContent = data.stale ? '請使用新的活動連結' : !loadedEvent ? '尚未開團' : data.registrationOpen ? '開放報名' : '暫停報名';
 
       // 更新時間
       if (data.eventTime) {
@@ -349,7 +368,7 @@
       }
 
       // 使用 API 回傳的數值
-      const maxSlots = data.maxSlots || 7;
+      const maxSlots = data.maxSlots || 0;
       const taken = data.taken || 0;
       currentSlots = data.remaining || 0;
       isFull = currentSlots <= 0;
@@ -359,16 +378,18 @@
       const subEl = document.getElementById('slots-sub');
       numEl.textContent = isFull ? '0' : currentSlots;
       numEl.className = 'slots-number' + (isFull ? ' full' : '');
-      subEl.textContent = isFull ? '名額已滿' : `共 ${maxSlots} 個臨打名額，已報名 ${taken} 人`;
+      subEl.textContent = !loadedEvent ? (data.stale ? '活動已換場，請使用團長提供的新連結' : '尚未開團，請等團長建立活動') : !data.registrationOpen ? '目前暫停報名' : isFull ? '名額已滿' : `共 ${maxSlots} 個臨打名額，已報名 ${taken} 人`;
 
       // 額滿時隱藏報名表單
-      document.getElementById('full-banner').className = 'full-banner' + (isFull ? ' show' : '');
-      document.getElementById('form-tabs').style.display = isFull ? 'none' : '';
-      document.getElementById('form-signup').style.display = isFull ? 'none' : '';
-      if (isFull && currentTab === 'signup') switchTab('cancel');
+      document.getElementById('full-banner').className = 'full-banner' + (loadedEvent && isFull ? ' show' : '');
+      document.getElementById('form-tabs').style.display = !loadedEvent ? 'none' : '';
+      document.getElementById('form-cancel').style.display = !loadedEvent ? 'none' : '';
+      document.getElementById('tab-signup').disabled = !loadedEvent || !data.registrationOpen || isFull;
+      document.getElementById('form-signup').style.display = !loadedEvent || !data.registrationOpen || isFull ? 'none' : '';
+      if ((!data.registrationOpen || isFull) && loadedEvent && currentTab === 'signup') switchTab('cancel');
 
     } catch (e) {
-      console.error('無法讀取資料', e);
+      loadedEvent = null; document.getElementById('slots-sub').textContent = '無法讀取活動，請重新整理'; document.getElementById('form-signup').style.display = 'none'; document.getElementById('form-cancel').style.display = 'none';
     }
   }
 
@@ -409,7 +430,7 @@
       const res = await fetch(`${API_URL}/api/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone })
+        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -437,7 +458,7 @@
       const res = await fetch(`${API_URL}/api/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone })
+        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -455,6 +476,8 @@
   }
 
   // 初始化 & 每 30 秒自動刷新
+  document.getElementById('form-signup').style.display = 'none';
+  document.getElementById('form-cancel').style.display = 'none';
   fetchStatus();
   setInterval(fetchStatus, 30000);
 </script>

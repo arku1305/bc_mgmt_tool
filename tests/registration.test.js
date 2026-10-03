@@ -1,0 +1,61 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { mutate, adminView, digest, autoAdvance, addGuest, remainingOf } = require('../報名機器人/lib/registration');
+const { publicCommand } = require('../報名機器人/lib/public-command');
+const { parseCommand, applyLine } = require('../報名機器人/lib/line-command');
+const config = { name: '測試球團', date: '2026-10-06', startTime: '19:00', endTime: '21:00', location: '虛構球館', totalCapacity: 3, guestFee: 200, fixedFee: 150, fixedMembers: ['固定甲'], frequency: 'once' };
+const context = { now: 100, uid: 'fake-organizer', eventId: 'test-1' };
+const setup = fields => mutate({}, { action: 'setupTeam', fields: { ...config, ...fields } }, context);
+test('初次開啟是空白，團長建立球團才帶入自己的資料及固定名單', () => {
+  const blank = adminView({});
+  assert.equal(blank.team, null); assert.equal(blank.activity.eventId, null); assert.deepEqual(blank.fixed, []);
+  const state = setup(); assert.equal(state.current.teamName, '測試球團'); assert.equal(remainingOf(state.current), 2);
+  assert.throws(() => mutate(state, { action: 'setupTeam', fields: config }, context), /已建立/);
+  assert.throws(() => setup({ fixedMembers: ['甲', '甲'] }), /重複/);
+  assert.throws(() => setup({ date: '2026-02-30' }), /日期/);
+});
+test('LINE 與網頁共用同名、容量檢查；代報各自編號，取消代報不影響其他人', () => {
+  let session = setup().current;
+  session = applyLine(session, parseCommand('小明+2'), 101).session;
+  assert.deepEqual(Object.values(session.walkIns).map(p => p.name), ['小明1', '小明2']);
+  assert.throws(() => publicCommand(session, 'signup', { name: '小明1', phone: '0912345678', eventId: 'test-1' }, 102), /相同姓名/);
+  assert.throws(() => applyLine(session, parseCommand('小明+2'), 103), /相同姓名/);
+  assert.throws(() => applyLine(session, parseCommand('其他+1'), 103), /名額已滿/);
+  session = applyLine(session, parseCommand('小明-2'), 104).session;
+  assert.deepEqual(Object.values(session.walkIns), []);
+});
+test('固定球友請假後被填滿不可恢復，有空位時恢復仍保留固定費率', () => {
+  let state = setup({ totalCapacity: 1 });
+  state = mutate(state, { action: 'leaveFixed', name: '固定甲' }, context);
+  state = mutate(state, { action: 'addGuest', name: '臨打乙' }, context);
+  const before = digest(state);
+  assert.throws(() => mutate(state, { action: 'restoreFixed', name: '固定甲' }, context), /名額已滿/);
+  assert.equal(digest(state), before);
+  state = mutate(state, { action: 'removeGuest', name: '臨打乙' }, context);
+  state = mutate(state, { action: 'restoreFixed', name: '固定甲' }, context);
+  assert.equal(state.current.fixedFee, 150); assert.deepEqual(state.current.cancelledFixed, []);
+  assert.equal(adminView(state).absenceStats[0].count, 0);
+});
+test('關閉報名會拒絕 LINE/網頁加入，但可取消；舊活動連結不可異動新活動', () => {
+  let state = setup();
+  const input = { name: '測試乙', phone: '0912345678', eventId: 'test-1' };
+  state.current = publicCommand(state.current, 'signup', input, 101);
+  state = mutate(state, { action: 'setOpen', open: false }, context);
+  assert.throws(() => publicCommand(state.current, 'signup', { ...input, name: '丙' }, 102), /暫停/);
+  assert.throws(() => applyLine(state.current, parseCommand('丙+1'), 102), /暫停/);
+  assert.equal(Object.values(publicCommand(state.current, 'cancel', input, 103).walkIns).length, 0);
+  const next = mutate(state, { action: 'create', fields: { ...config, date: '2026-10-13' } }, { ...context, eventId: 'test-2' });
+  assert.equal(next.archives['test-1'].walkIns[0].name, '測試乙');
+  assert.throws(() => publicCommand(next.current, 'signup', input, 104), /活動已更新/);
+  assert.equal(JSON.stringify(adminView(next)).includes('0912345678'), false);
+});
+test('固定頻率依日期及提前日開團，不覆蓋未結束活動、保留歷史；單次不自動更新', () => {
+  const state = setup({ frequency: 'weekly', intervalWeeks: 2, leadDays: 3 });
+  assert.equal(autoAdvance(state, Date.parse('2026-10-06T20:00:00+08:00'), 'test-2'), null);
+  assert.equal(autoAdvance(state, Date.parse('2026-10-17T08:59:00+08:00'), 'test-2'), null);
+  const next = autoAdvance(state, Date.parse('2026-10-17T09:00:00+08:00'), 'test-2');
+  assert.equal(next.current.eventDate, '2026-10-20'); assert.ok(next.archives['test-1']);
+  assert.equal(autoAdvance(next, Date.parse('2026-10-17T09:01:00+08:00'), 'test-3'), null);
+  assert.equal(autoAdvance(setup(), Date.parse('2027-01-01'), 'test-2'), null);
+  assert.equal(Object.hasOwn(next.current, 'paid'), false);
+});

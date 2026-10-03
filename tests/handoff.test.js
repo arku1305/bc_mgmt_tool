@@ -64,7 +64,7 @@ function apiFixture(options = {}) {
       state = next; writes++; return { committed: true, snapshot: { val: () => state } };
     },
   };
-  const db = { ref(p) { return p === 'session' ? ref : { async set(value) { archived[p] = value; writes++; } }; } };
+  const db = { ref(p) { return p === 'registrationV1/current' ? ref : { async set(value) { archived[p] = value; writes++; } }; } };
   const admin = { apps: [], initializeApp() {
     const app = { name: 'roster-manager-auth', auth: () => ({ async verifyIdToken(token) {
       if (token === 'bad') throw new Error('invalid');
@@ -73,7 +73,18 @@ function apiFixture(options = {}) {
   } };
   const sandbox = { module: { exports: {} }, process: { env }, require(name) {
     if (name === 'firebase-admin') return admin;
-    if (name === './_lib') return { db, FIXED_MEMBERS: fixed, LINE_GROUP_ID: 'fake-group' };
+    if (name === '../lib/access') return require('../報名機器人/lib/access');
+    if (name === '../lib/team-scope') return { paths: () => ({ registration: 'registrationV1' }) };
+    if (name === '../lib/manager-auth') return { managerAuth: async (req, res) => {
+      if (!env.RANKING_AUTH_PROJECT_ID || !env.ROSTER_MANAGER_UIDS) { res.status(503).json({}); return null; }
+      if (req.headers.origin && req.headers.origin !== env.RANKING_ORIGIN) { res.status(403).json({}); return null; }
+      const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+      if (!token) { res.status(401).json({}); return null; }
+      let user; try { user = await admin.initializeApp().auth().verifyIdToken(token); } catch (_) { res.status(401).json({}); return null; }
+      if (!env.ROSTER_MANAGER_UIDS.split(',').includes(user.uid)) { res.status(403).json({}); return null; }
+      return { ...user, teamId: 'team-test' };
+    } };
+    if (name === './_lib') return { db, fixedOf: () => fixed, LINE_GROUP_ID: 'fake-group' };
     if (name === './_handoff') return require('../報名機器人/api/_handoff');
     return require(name);
   } };

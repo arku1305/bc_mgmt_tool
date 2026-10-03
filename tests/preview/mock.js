@@ -12,6 +12,7 @@
   window.firebase = { auth: () => ({ currentUser: user, onAuthStateChanged(callback) { queueMicrotask(() => callback(user)); return () => {}; }, async signOut() { alert('測試頁不需要登入；重新整理即可從頭測試。'); } }) };
   window.RANKING_DATA_PATH = '/rankingV1';
   window.ROSTER_API_URL = window.location.origin;
+  window.SIGNUP_PAGE_URL = window.location.origin + '/?event=';
   window.__TWEAKS__ = { theme: 'minimal', accent: '#8ff3b5' };
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
   window.fetch = async function(input, options = {}) {
@@ -22,6 +23,7 @@
         currentMatch: data.currentMatch, roundNumbers: data.roundNumbers, eventIntegration: data.eventIntegration ? { eventTime: data.eventIntegration.eventTime } : null, callUp: data.callUp || {} });
     }
     if (url.origin === window.location.origin && url.pathname === '/api/roster-handoff') {
+      if (new URLSearchParams(location.search).has('registration')) return nativeFetch(input, options);
       const fingerprint = 'demo-revision-' + revision;
       if (options.method === 'POST') {
         if (JSON.parse(options.body).fingerprint !== fingerprint) return json({ message: '報名名單已更新，請重新預覽並確認' }, 409);
@@ -54,6 +56,15 @@
     if (url.origin === window.location.origin) return nativeFetch(input, options);
     throw new Error('測試頁已阻擋外部資料連線');
   };
+  document.getElementById('demo-restart').onclick = async function() {
+    if (new URLSearchParams(location.search).has('registration')) await nativeFetch('/api/demo-reset', { method: 'POST' });
+    location.reload();
+  };
+  if (new URLSearchParams(location.search).has('registration')) {
+    document.getElementById('demo-change').hidden = true;
+    document.getElementById('demo-conflict').hidden = true;
+    document.getElementById('demo-status').textContent = '從建立球團開始；重新開始只清除本機虛構資料。';
+  }
   document.getElementById('demo-change').onclick = function() {
     roster = [roster[0], { registrationId: 'guest-d', name: '臨打丁', participantType: 'guest' }];
     revision++;

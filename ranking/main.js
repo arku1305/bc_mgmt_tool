@@ -891,7 +891,7 @@ window.TopBar = TopBar;
 // ════════════════════════════════════════════════════════════════════════════
 
 // 右側球員名單 - 支援 admin / player 兩種角色
-function Sidebar({ players, onCourtIds, meId, theme, accent, role, onEditLevel, onAddPlayer, onImportPlayers, onDeletePlayer, onTogglePin, onToggleCheckIn, onTogglePaid, isPortrait }) {
+function Sidebar({ players, onCourtIds, meId, theme, accent, role, onEditLevel, onAddPlayer, onImportPlayers, onDeletePlayer, onTogglePin, onToggleCheckIn, onTogglePaid, onActivityImport, isPortrait }) {
   const isAdmin = role === 'admin';
   const [editingId, setEditingId] = React.useState(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -939,7 +939,8 @@ function Sidebar({ players, onCourtIds, meId, theme, accent, role, onEditLevel, 
           </div>
         </div>
         {isAdmin ? (
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button onClick={onActivityImport} style={{ background: 'transparent', color: accent, border: '1px solid var(--line)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer' }}>活動匯入</button>
             <button
               onClick={() => setImportOpen(true)}
               title="批次匯入臨打名單"
@@ -2824,6 +2825,9 @@ function App() {
   var [joined, setJoined] = React.useState(role !== 'player' ? true : null);
 
   var [qrOpen, setQROpen] = React.useState(false);
+  var [activityOpen, setActivityOpen] = React.useState(false);
+  var [eventIntegration, setEventIntegration] = React.useState(null);
+  var [registrationChanged, setRegistrationChanged] = React.useState(false);
 
   // 訊息：球員撰寫 / 管理者收件匣
   var [msgOpen, setMsgOpen] = React.useState(false);
@@ -2856,6 +2860,7 @@ function App() {
 
   // ── 啟動時從 Firebase 載入資料 ───────────────────────────────────────────
   React.useEffect(function() {
+    if (role === 'admin' && (!authReady || !authenticated)) return;
     loadData().then(function(data) {
       var pArr = (data && Array.isArray(data.players))
         ? data.players.map(window.normalizePlayer)
@@ -2864,6 +2869,7 @@ function App() {
       pArr.forEach(function(p) { pMap[p.id] = p; });
 
       setPlayers(pArr);
+      setEventIntegration(data && data.eventIntegration || null);
 
       if (data && data.roundNumbers) setRoundNumbers(data.roundNumbers);
 
@@ -2897,7 +2903,31 @@ function App() {
         setJoined(false);
       }
     });
-  }, []); // 只在 mount 時執行一次
+  }, [role, authReady, authenticated]);
+
+  // Read-only notice: no LINE push and no automatic import.
+  React.useEffect(function() {
+    if (!authenticated || role !== 'admin' || !eventIntegration) {
+      setRegistrationChanged(false); return;
+    }
+    var active = true;
+    async function checkRoster() {
+      try {
+        var token = await firebase.auth().currentUser.getIdToken();
+        var base = window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app';
+        var response = await fetch(base + '/api/roster-handoff', { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
+        if (response.ok) {
+          var draft = await response.json();
+          if (active) setRegistrationChanged(draft.fingerprint !== eventIntegration.revision);
+        } else if (response.status === 409 && active) {
+          setRegistrationChanged(true);
+        }
+      } catch (_) { /* Import dialog shows actionable connection errors. */ }
+    }
+    checkRoster();
+    var interval = setInterval(checkRoster, 30000);
+    return function() { active = false; clearInterval(interval); };
+  }, [authenticated, role, eventIntegration]);
 
   // ── 球員加入網址 ────────────────────────────────────────────────────────
   // 從管理者目前所在的網址自動推導（同一個部署 + ?player），
@@ -3163,7 +3193,9 @@ function App() {
 
     // 重設＝新的一場：保留★常客與季繳球員，但所有人都要重新報到／繳費
     var kept = players.filter(function(p) { return p.regular || p.seasonPass; }).map(function(p) {
-      return Object.assign({}, p, { games: 0, consecutiveGames: 0, partners: {}, opponents: {}, checkedIn: false, paid: false, wantPartner: [], wantOppo: [] });
+      var keptPlayer = Object.assign({}, p, { games: 0, consecutiveGames: 0, partners: {}, opponents: {}, checkedIn: false, paid: false, wantPartner: [], wantOppo: [] });
+      delete keptPlayer.registrationId; delete keptPlayer.integrationEventId; delete keptPlayer.teamId;
+      return keptPlayer;
     });
 
     var newCourts = [{ teamA: [], teamB: [] }, { teamA: [], teamB: [] }];
@@ -3176,6 +3208,8 @@ function App() {
     // 新的一場：清掉舊的叫號通知與出場組合紀錄
     fbPut('/callUp', null);
     fbPut('/history', null);
+    fbPut('/eventIntegration', null);
+    setEventIntegration(null);
     setHistory([]);
   }
 
@@ -3457,9 +3491,10 @@ function App() {
         onShowQR={function() { setQROpen(true); }}
         onLogout={handleLogout}
         role={role}
-        eventInfo={{ day: 'TUE', time: '20:00-22:00', location: '南科新力羽球館' }}
+        eventInfo={{ day: eventIntegration ? '活動' : 'TUE', time: eventIntegration ? eventIntegration.eventTime : '20:00-22:00', location: '南科新力羽球館' }}
       />
 
+      {isAdmin && registrationChanged && <button onClick={function() { setActivityOpen(true); }} style={{ background: '#463a20', color: '#ffe0a0', border: 0, padding: 10, cursor: 'pointer' }}>報名名單有更新，尚未套用到排點。點此查看差異。</button>}
       <div style={{
         flex: 1, display: 'flex',
         flexDirection: isPortrait ? 'column' : 'row',
@@ -3519,6 +3554,7 @@ function App() {
           onEditLevel={handleEditLevel}
           onAddPlayer={handleAddPlayer}
           onImportPlayers={handleImportPlayers}
+          onActivityImport={function() { setActivityOpen(true); }}
           onDeletePlayer={handleDeletePlayer}
           onTogglePin={handleTogglePin}
           onToggleCheckIn={handleToggleCheckIn}
@@ -3529,6 +3565,7 @@ function App() {
 
       <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
 
+      {activityOpen && isAdmin && <ActivityHandoffPanel onClose={function() { setActivityOpen(false); }} onApplied={function(list, binding) { setPlayers(list.map(window.normalizePlayer)); setEventIntegration(binding); }} />}
       {qrOpen && <QRDialog url={playerUrl} onClose={function() { setQROpen(false); }} accent={tweaks.accent} />}
 
       {/* 浮動訊息鈕：球員＝傳訊給主辦；管理者＝收件匣(未讀紅點) */}

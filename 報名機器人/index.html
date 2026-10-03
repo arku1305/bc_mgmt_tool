@@ -321,7 +321,7 @@
   </div>
 
   <div class="footer">
-    名單即時同步 · 報名後 LINE 群組將自動更新<br>
+    名單即時同步 · 在 LINE 輸入「查名單」查看最新名單<br>
     如有問題請聯繫管理員
   </div>
 </div>
@@ -330,7 +330,7 @@
   // ======================================================
   // ⚙️  設定區：填入你的 Firebase 專案資訊
   // ======================================================
-  const API_URL = 'https://badminton-signup-vercel.vercel.app';
+  const API_URL = window.location.origin;
   // ======================================================
 
   let currentSlots = 0;
@@ -413,7 +413,7 @@
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showMsg(`✅ ${name} 報名成功！LINE 群組名單已更新。`, 'success');
+        showMsg(`✅ ${name} 報名成功！可在 LINE 輸入「查名單」查看最新名單。`, 'success');
         document.getElementById('signup-name').value = '';
         document.getElementById('signup-phone').value = '';
         fetchStatus();

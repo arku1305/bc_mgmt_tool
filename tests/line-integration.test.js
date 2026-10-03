@@ -1,8 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const core=require('../報名機器人/lib/registration'),model=require('../報名機器人/lib/club-model');
-function fixture(){
+function fixture(coldCache=false){
+ const listeners=new Set();
  const store={},writes=[],cache={},users={leader:{uid:'leader',email:'leader@example.test',emailVerified:true},second:{uid:'second',email:'second@example.test',emailVerified:true},admin:{uid:'admin',email:'admin@example.test',emailVerified:true}};
- const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{let p=store;for(const k of parts.slice(0,-1))p=p[k]||={};p[parts.at(-1)]=structuredClone(value);writes.push(location);};return{once:async()=>({val:()=>structuredClone(read())}),set:async v=>put(v),transaction:async fn=>{const next=fn(structuredClone(read()));if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:()=>structuredClone(read())}};}};}};
+ const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{let p=store;for(const k of parts.slice(0,-1))p=p[k]||={};p[parts.at(-1)]=structuredClone(value);writes.push(location);};return{on:(_event,fn)=>listeners.add(fn),off:(_event,fn)=>listeners.delete(fn),once:async()=>({val:()=>structuredClone(read())}),set:async v=>put(v),transaction:async fn=>{const next=fn(coldCache&&!listeners.size?null:structuredClone(read()));if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:()=>structuredClone(read())}};}};}};
  const env={ROSTER_MANAGER_UIDS:'leader,second',PLATFORM_ADMIN_EMAILS:'admin@example.test',RANKING_ORIGIN:'https://example.test/manage',SIGNUP_PAGE_URL:'https://example.test/signup'};
  function load(file){file=path.resolve(file);if(!path.extname(file))file+='.js';if(cache[file])return cache[file];const module={exports:{}};vm.runInNewContext(fs.readFileSync(file,'utf8'),{module,Date,URL,process:{env},require:n=>n==='firebase-admin'?{auth:()=>({getUser:async uid=>users[uid]})}:n.startsWith('.')?load(path.resolve(path.dirname(file),n)):require(n)});return cache[file]=module.exports;}
  const service=load('報名機器人/lib/line-integration.js'),replies=[];let fail=false;
@@ -11,8 +12,12 @@ function fixture(){
  const event=(uid,text,id='command-'+Math.random(),group='group-a')=>({type:'message',webhookEventId:id,source:{type:'group',groupId:group,userId:'line-'+uid},message:{type:'text',text},replyToken:'fake'});
  async function api(user,body,query={}){const result={status:200};const res={status(n){result.status=n;return this;},json(v){result.body=v;},end(){}};await service.service({method:body?'POST':'GET',body,query},res,db,{...users[user],modules:{registration:true}});return result;}
  function club(uid='leader'){const id='club-11111111-1111-4111-8111-111111111111',eventId='event-11111111-1111-4111-8111-111111111111';const c=model.apply(null,{action:'createClub',fields:{name:'虛構團',date:'2026-10-10',startTime:'20:00',endTime:'22:00',location:'虛構場',totalCapacity:4,guestFee:null,fixedFee:null,fixedMembers:['固定甲'],frequency:'once',courtCount:2}}, {uid,clubId:id,eventId,now:1});c.publicToken='11111111-1111-4111-8111-111111111111';store.clubsV2={[id]:c};return {clubId:id,eventId};}
- return{...service,store,writes,db,users,transport,replies,link,event,api,club,setFail:v=>fail=v};
+ return{...service,store,writes,db,users,transport,replies,link,event,api,club,listeners,setFail:v=>fail=v};
 }
+test('冷啟動不把有效綁定誤判過期；成功與拒絕後都釋放監聽',async()=>{
+ const f=fixture(true);await f.link('leader');assert.equal((await f.view(f.db,f.users.leader)).linked,true);assert.equal(f.listeners.size,0);
+ await assert.rejects(()=>f.prepareLink(f.db,f.users.second,'missing','fake-token',200),/使用或過期/);assert.equal(f.listeners.size,0);
+});
 test('官方綁定：nonce 單次、到期、來源不符、failed、不允許跨帳號覆寫',async()=>{
  const f=fixture();const e=await f.link('leader');assert.equal((await f.view(f.db,f.users.leader)).linked,true);
  const before=f.writes.length;assert.equal(await f.completeLink(f.db,e,104),false);assert.equal(f.writes.length,before);

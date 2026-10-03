@@ -9,10 +9,19 @@ const read = async (db,path) => (await db.ref(path).once('value')).val();
 const root = 'lineIntegrationV2';
 function init(state) { return { links:{},users:{},attempts:{},groups:{},publications:{},processed:{},...state }; }
 async function transact(db,fn) {
-  const ref=db.ref(root);await ref.once('value');let error;
-  const result=await ref.transaction(value=>{error=null;try{return fn(init(value));}catch(e){error=e;return;}});
-  if(!result.committed)throw error || new Error('操作已處理或資料已更新，請重新整理');
-  return result.snapshot.val();
+  const ref=db.ref(root);let error;
+  // Keep the read listener alive until the transaction finishes. A one-shot
+  // read can release its cache before the SDK's initial transaction callback.
+  const keepCache=()=>{};
+  if(typeof ref.on==='function')ref.on('value',keepCache);
+  try {
+    await ref.once('value');
+    const result=await ref.transaction(value=>{error=null;try{return fn(init(JSON.parse(JSON.stringify(value || {}))));}catch(e){error=e;return;}});
+    if(!result.committed)throw error || new Error('操作已處理或資料已更新，請重新整理');
+    return result.snapshot.val();
+  } finally {
+    if(typeof ref.off==='function')ref.off('value',keepCache);
+  }
 }
 async function actor(db,uid) {
   let user;try{user=await admin.auth().getUser(uid);}catch(_){return null;}

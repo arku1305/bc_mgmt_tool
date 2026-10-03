@@ -620,7 +620,7 @@ function Court({ index, teamA = [], teamB = [], meId, theme, accent, round, onNe
           <div style={{
             fontSize: 10, color: 'var(--dim)',
             fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1,
-          }}>{animating ? '管理者排點中…' : '等待排點'}</div>
+          }}>{animating ? '團長排點中…' : '等待排點'}</div>
         )}
       </div>
 
@@ -809,7 +809,7 @@ function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo })
             color: isAdmin ? accent : '#eab308',
             border: `1px solid ${isAdmin ? accent+'55' : '#eab30855'}`,
             fontFamily: "'JetBrains Mono', monospace",
-          }}>{isAdmin ? 'ADMIN' : 'PLAYER'}</span>
+          }}>{isAdmin ? '團長' : 'PLAYER'}</span>
         </div>
         <div style={{ height: 20, width: 1, background: 'var(--line)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1738,7 +1738,7 @@ function JoinScreen({ onJoin, onSkip, theme, accent, role, players, onCheckIn })
                 color: isPlayer ? '#eab308' : accent,
                 border: `1px solid ${isPlayer ? '#eab30855' : accent+'55'}`,
                 fontFamily: "'JetBrains Mono', monospace",
-              }}>{isPlayer ? 'PLAYER' : 'ADMIN'}</span>
+              }}>{isPlayer ? 'PLAYER' : '團長'}</span>
             </div>
             <div style={{
               fontSize: 10, color: 'var(--dim)', marginTop: 2,
@@ -1753,14 +1753,14 @@ function JoinScreen({ onJoin, onSkip, theme, accent, role, players, onCheckIn })
           margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: 0.5,
           fontFamily: "'Noto Sans TC', sans-serif",
         }}>
-          {isPlayer ? '加入怕乙球的活動' : '開啟活動（管理者）'}
+          {isPlayer ? '加入怕乙球的活動' : '開啟活動（團長）'}
         </h2>
         <p style={{
           margin: '0 0 22px', color: 'var(--muted)', fontSize: 13, lineHeight: 1.6,
         }}>
           {isPlayer
             ? '輸入你的名字後就能看到排點，場上出現你的時候會用黃色高亮。'
-            : '輸入你的名字以管理者身份開始。你可以排點、調整球員等級、產生 QR 給球員掃描。'}
+            : '輸入你的名字以團長身分開始。你可以排點、調整球員等級、產生 QR 給球員掃描。'}
         </p>
 
         <label style={{
@@ -2572,8 +2572,8 @@ function PasswordOverlay({ accent, accessError }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 20px', fontSize: 24, color: '#0a1a10',
         }}>🔒</div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>管理員登入</h2>
-        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 24px' }}>請以管理員帳號登入以開啟排點功能</p>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>團長登入</h2>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 24px' }}>請以已核准的團長 Google 帳號登入</p>
 
         <button
           onClick={check}

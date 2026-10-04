@@ -18,6 +18,15 @@ test('冷啟動不把有效綁定誤判過期；成功與拒絕後都釋放監�
  const f=fixture(true);await f.link('leader');assert.equal((await f.view(f.db,f.users.leader)).linked,true);assert.equal(f.listeners.size,0);
  await assert.rejects(()=>f.prepareLink(f.db,f.users.second,'missing','fake-token',200),/使用或過期/);assert.equal(f.listeners.size,0);
 });
+test('冷啟動可將活動連結群組；尚無公告時加入指令仍回覆群組登錄結果',async()=>{
+ const f=fixture(true);await f.link('leader');const scope=f.club();
+ await f.handleEvent(f.db,f.event('leader','加入揪凱'),f.transport,200);
+ assert.match(f.replies.at(-1),/已加入揪凱/);
+ const groupKey=f.hash('group-a');
+ const created=await f.api('leader',{action:'publication',...scope,groupKey,active:true},{club:scope.clubId,event:scope.eventId});
+ assert.equal(created.status,200);assert.equal(created.body.publications[0].ready,true);assert.equal(created.body.publications[0].status,'awaitingCommand');assert.equal(f.listeners.size,0);
+ await f.handleEvent(f.db,f.event('leader','加入揪凱'),f.transport,201);assert.match(f.replies.at(-1),/已加入揪凱/);
+});
 test('官方綁定：nonce 單次、到期、來源不符、failed、不允許跨帳號覆寫',async()=>{
  const f=fixture();const e=await f.link('leader');assert.equal((await f.view(f.db,f.users.leader)).linked,true);
  const before=f.writes.length;assert.equal(await f.completeLink(f.db,e,104),false);assert.equal(f.writes.length,before);

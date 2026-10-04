@@ -8,20 +8,23 @@ const random = () => randomBytes(24).toString('base64url');
 const read = async (db,path) => (await db.ref(path).once('value')).val();
 const root = 'lineIntegrationV2';
 function init(state) { return { links:{},users:{},attempts:{},groups:{},publications:{},processed:{},...state }; }
-async function transact(db,fn) {
-  const ref=db.ref(root);let error;
+async function cachedTransaction(ref,update) {
   // Keep the read listener alive until the transaction finishes. A one-shot
   // read can release its cache before the SDK's initial transaction callback.
   const keepCache=()=>{};
   if(typeof ref.on==='function')ref.on('value',keepCache);
   try {
     await ref.once('value');
-    const result=await ref.transaction(value=>{error=null;try{return fn(init(JSON.parse(JSON.stringify(value || {}))));}catch(e){error=e;return;}});
-    if(!result.committed)throw error || new Error('操作已處理或資料已更新，請重新整理');
-    return result.snapshot.val();
+    return await ref.transaction(value=>update(value == null ? null : JSON.parse(JSON.stringify(value))));
   } finally {
     if(typeof ref.off==='function')ref.off('value',keepCache);
   }
+}
+async function transact(db,fn) {
+  let error;
+  const result=await cachedTransaction(db.ref(root),value=>{error=null;try{return fn(init(value));}catch(e){error=e;return;}});
+  if(!result.committed)throw error || new Error('操作已處理或資料已更新，請重新整理');
+  return result.snapshot.val();
 }
 async function actor(db,uid) {
   let user;try{user=await admin.auth().getUser(uid);}catch(_){return null;}
@@ -102,8 +105,8 @@ async function service(req,res,db,user) {
         const club=await ownedClub(db,user,b.clubId);if(!club||!Object.hasOwn(club.events||{},b.eventId)||typeof b.active!=='boolean'||! /^[a-f0-9]{64}$/.test(b.groupKey))throw new Error('活動或群組不正確');
         const key=hash(b.clubId+':'+b.eventId+':'+b.groupKey),code=randomBytes(6).toString('hex');
         const currentState=init(await read(db,root));if(!membership(currentState,user.uid,b.groupKey))throw new Error('尚未取得此群使用權');
-        const ref=db.ref('clubsV2/'+b.clubId);await ref.once('value');
-        const bound=await ref.transaction(c=>{if(c?.ownerUid!==user.uid||!Object.hasOwn(c.events||{},b.eventId))return;const event=c.events[b.eventId];event.linePublications={...(event.linePublications||{}),[b.groupKey]:{active:b.active,publicationKey:key}};return c;});
+        const ref=db.ref('clubsV2/'+b.clubId);
+        const bound=await cachedTransaction(ref,c=>{if(c?.ownerUid!==user.uid||!Object.hasOwn(c.events||{},b.eventId))return;const event=c.events[b.eventId];event.linePublications={...(event.linePublications||{}),[b.groupKey]:{active:b.active,publicationKey:key}};return c;});
         if(!bound.committed)throw new Error('活動已更新，請重新整理');
         await transact(db,s=>{if(!membership(s,user.uid,b.groupKey))throw new Error('尚未取得此群使用權');const previous=s.publications[key];s.publications[key]={...previous,key,clubId:b.clubId,eventId:b.eventId,groupKey:b.groupKey,uid:user.uid,active:b.active,code:previous?.code||code,status:previous?.status||'awaitingCommand'};return s;});
       } else throw new Error('不支援的操作');
@@ -120,7 +123,9 @@ async function handleEvent(db,event,transport,now=Date.now()) {
     const timestamp=event.timestamp || now;
     await transact(db,s=>{const key=hash(event.source.groupId);let g=s.groups[key];if(!g)g=s.groups[key]={groupId:event.source.groupId,name:'LINE 群組',members:{},requests:{},createdBy:null};if(!g.lifecycleAt || timestamp>g.lifecycleAt){g.active=event.type==='join';g.lifecycleAt=timestamp;}return s;});return true;
   }
-  if(await require('./line-registration').handle(db,event,transport,now))return true;
+  const managementText=event.type==='message'&&event.message?.type==='text'?event.message.text.trim():'';
+  const managementCommand=managementText==='加入揪凱'||/^發布揪凱\s+[a-f0-9]{12}$/.test(managementText);
+  if(!managementCommand&&await require('./line-registration').handle(db,event,transport,now))return true;
   if(event.type!=='message'||event.message?.type!=='text')return false;
   const text=event.message.text.trim(),source=event.source||{};
   if(source.type==='user'&&source.userId){

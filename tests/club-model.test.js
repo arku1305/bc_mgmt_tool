@@ -73,3 +73,14 @@ test('舊資料提前產生下一週也只允許一場；到前場結束與開�
  const time=require('../報名機器人/lib/activity-time');assert.equal(time.available(club,old,Date.parse('2026-10-04T09:00:00+08:00')),true);assert.equal(time.available(club,club.events[id],Date.parse('2026-10-04T09:00:00+08:00')),false);
  assert.equal(time.available(club,club.events[id],Date.parse('2026-10-07T09:00:00+08:00')),false);assert.equal(time.available(club,club.events[id],Date.parse('2026-10-10T09:00:00+08:00')),true);
 });
+test('新活動固定名單可修改、清空；省略沿用預設，不覆寫預設與舊場次',()=>{
+ const club=create(),old=JSON.stringify(club.events[context.eventId]);
+ const add=(fixedMembers,id)=>model.apply(club,{action:'createEvent',fields:{date:'2026-10-10',frequency:'once',...fixedMembers}},{...context,eventId:id});
+ const changed=add({fixedMembers:['固定乙','固定丙']},'changed');
+ assert.deepEqual(changed.events.changed.fixedMembers,['固定乙','固定丙']);
+ assert.deepEqual(changed.defaults.fixedMembers,['固定甲']);assert.equal(JSON.stringify(changed.events[context.eventId]),old);
+ assert.deepEqual(add({fixedMembers:[]},'empty').events.empty.fixedMembers,[]);
+ assert.deepEqual(add({},'default').events.default.fixedMembers,['固定甲']);
+ assert.throws(()=>add({fixedMembers:['固定乙','固定乙']},'duplicate'));
+ assert.throws(()=>add({fixedMembers:['甲','乙','丙','丁','戊']},'overfull'));
+});

@@ -16,7 +16,7 @@ function stamp(session) {
   return session;
 }
 function buildEvent(club, input, context) {
-  const fields = { ...club.defaults, ...input, name: club.name, fixedMembers: club.defaults.fixedMembers, intervalWeeks: 1 };
+  const fields = { ...club.defaults, ...input, name: club.name, intervalWeeks: 1 };
   const team = core.teamFields(fields);
   const session = core.mutate({}, { action: 'setupTeam', fields }, context).current;
   return { ...session, ...extras(fields), clubId: club.clubId, frequency: team.recurrence.frequency, leadDays: team.recurrence.leadDays };

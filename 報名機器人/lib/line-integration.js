@@ -59,6 +59,9 @@ async function groupJoin(db,event,user,transport,now) {
   await transact(db,s=>{
     const linked=s.users[user.uid];if(!linked?.active||linked.lineKey!==hash(event.source.userId))throw new Error('請先完成團長 LINE 綁定');
     let g=s.groups[key];if(!g){g=s.groups[key]={groupId:event.source.groupId,name,active:true,createdBy:user.uid,createdAt:now,members:{},requests:{}};}
+    // RTDB omits empty objects after persistence; restore nested collections
+    // before a second organizer submits the group's first sharing request.
+    g.members ||= {};g.requests ||= {};
     if(!g.active)throw new Error('Bot 已離開此群，請重新邀請後再登錄');
     if(!g.createdBy){g.createdBy=user.uid;g.createdAt=now;g.name=name;}
     if(g.createdBy===user.uid){g.members[user.uid]=true;message='已加入揪凱，可在團長後台選擇此群。';}

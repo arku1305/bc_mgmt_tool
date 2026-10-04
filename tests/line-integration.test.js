@@ -47,6 +47,15 @@ test('第二團長須原登錄者同意；Admin 不可代審或看私有活動�
  const scope=f.club();assert.equal((await f.api('admin',null,{club:scope.clubId,event:scope.eventId})).status,422);
  assert.doesNotMatch(JSON.stringify(await f.view(f.db,f.users.leader)),/line-leader|lineId|tokenHash|nonce/);
 });
+test('Firebase 省略空白申請清單時，第二團長仍可申請，原團長可見並核准',async()=>{
+ const f=fixture(true);await f.link('leader');await f.link('second');await f.handleEvent(f.db,f.event('leader','加入揪凱'),f.transport,200);
+ const key=f.hash('group-a');delete f.store.lineIntegrationV2.groups[key].requests;
+ await f.handleEvent(f.db,f.event('second','加入揪凱'),f.transport,201);
+ assert.match(f.replies.at(-1),/已送出共用申請/);
+ const owner=await f.view(f.db,f.users.leader);assert.equal(owner.groups[0].requests[0].email,'second@example.test');
+ assert.equal((await f.api('leader',{action:'review',groupKey:key,requester:'second',decision:'approve'})).status,200);
+ assert.equal((await f.view(f.db,f.users.second)).groups[0].usable,true);
+});
 test('公告限本人活動與本群；只 reply、重送不重複、暫停與離群阻擋；送出失败不記成功',async()=>{
  const f=fixture();await f.link('leader');await f.link('second');await f.handleEvent(f.db,f.event('leader','加入揪凱'),f.transport,200);const scope=f.club(),groupKey=f.hash('group-a');
  const created=await f.api('leader',{action:'publication',...scope,groupKey,active:true},{club:scope.clubId,event:scope.eventId});assert.equal(created.body.publications[0].status,'awaitingCommand');const cmd=created.body.publications[0].command;

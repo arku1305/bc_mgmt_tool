@@ -11,6 +11,7 @@ function LineManagementPanel({clubId='',eventId='',onChanged}) {
   }
   React.useEffect(()=>{let active=true;setData(null);setError('');request().then(d=>{if(active)setData(d);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[clubId,eventId]);
   async function change(body) {setBusy(true);setError('');setNotice('');try{const result=await request(body);if(result.url){window.location.assign(result.url);return;}setData(result);if(body.action==='publication'&&onChanged)await onChanged();setNotice('已更新。');}catch(e){setError(e.message);}finally{setBusy(false);}}
+  async function refreshGroups(){setBusy(true);setError('');setNotice('');try{const result=await request();setData(result);const count=result.groups.reduce((n,g)=>n+(g.requests||[]).length,0);setNotice('群組清單已更新：'+result.groups.length+' 個群組，'+count+' 筆待審申請。');}catch(e){setError(e.message);}finally{setBusy(false);}}
   async function simulate(source,text,postback){setBusy(true);setError('');try{
     const token=await firebase.auth().currentUser.getIdToken();const res=await fetch('/api/preview-line',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({source,text,postback,player,group:simulation.group})});const result=await res.json();if(!res.ok)throw new Error(result.message);setMessages(result.messages||[]);setChoices(result.choices||[]);setData(await request());if(onChanged)await onChanged();
   }catch(e){setError(e.message);}finally{setBusy(false);}}
@@ -19,9 +20,10 @@ function LineManagementPanel({clubId='',eventId='',onChanged}) {
     <h2>LINE 群組管理</h2><p>{data?.linked?'團長 LINE 已綁定':'團長 LINE 尚未綁定：請先加 Bot 為好友，再私訊「綁定團長」。'}固定球友不用綁定。</p>
     {ticket&&linkToken&&<><p>確認將目前登入的 Google 帳號與發起連結的 LINE 帳號綁定。可隨時解除。</p><button style={button} disabled={busy} onClick={()=>change({action:'prepareLink',ticket,linkToken})}>確認綁定並前往 LINE 驗證</button></>}
     {data?.linked&&<button style={button} disabled={busy} onClick={()=>change({action:'unlink'})}>解除我的 LINE 綁定</button>}
-    <button style={button} disabled={busy} onClick={async()=>{try{setData(await request());setError('');}catch(e){setError(e.message);}}}>重新整理群組與申請</button>
+    <button style={button} disabled={busy} onClick={refreshGroups}>{busy?'處理中…':'更新群組清單'}</button>
     {error&&<p role="alert" style={{color:'#ffb5b5'}}>{error}</p>}{notice&&<p role="status">{notice}</p>}
     <p>在群裡輸入「加入揪凱」。已有登錄團長的群，須由原登錄團長在下方同意。</p>
+    <p>其他團長申請共用前，須先由 Admin 核准自己的 Google 帳號，再用自己的 LINE 私訊 Bot「綁定團長」。一般球友不需申請共用即可報名。</p>
     {data?.groups.map(g=><section key={g.key} style={{borderTop:'1px solid #42534a',paddingTop:12,marginTop:12}}><h3>{g.name}</h3><p>{!g.active?'Bot 已離群':g.usable?'可使用':g.status==='rejected'?'申請未通過':'等待原登錄團長同意'}</p>
       {g.owner&&g.requests.map(r=><p key={r.uid}>申請者：{r.email} <button style={button} disabled={busy} onClick={()=>change({action:'review',groupKey:g.key,requester:r.uid,decision:'approve'})}>同意共用</button> <button style={button} disabled={busy} onClick={()=>change({action:'review',groupKey:g.key,requester:r.uid,decision:'reject'})}>拒絕共用</button></p>)}
       {clubId&&eventId&&g.usable&&(()=>{const p=data.publications.find(p=>p.groupKey===g.key);return <><button style={button} disabled={busy} onClick={()=>change({action:'publication',clubId,eventId,groupKey:g.key,active:!p?.active})}>{p?.active?'停止本場與此群連結':'連結本場活動到此群'}</button>{p?.active&&!p.ready&&<button style={button} disabled={busy} onClick={()=>change({action:'publication',clubId,eventId,groupKey:g.key,active:true})}>更新本場群組連結</button>}{p?.active&&<><p>到這個群輸入：<strong>{p.command}</strong></p><p>公告：{p.status==='sent'?'已送出':p.status==='failed'?'送出失敗，請重新輸入指令':p.status==='sending'?'處理中／尚未確認送出':'等待群內指令'}</p></>}</>;})()}

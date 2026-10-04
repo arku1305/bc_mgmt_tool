@@ -2537,7 +2537,7 @@ function flashTitle(msg) {
 // ════════════════════════════════════════════════════════════════════════════
 // PasswordOverlay
 // ════════════════════════════════════════════════════════════════════════════
-function PasswordOverlay({ accent, accessError }) {
+function PasswordOverlay({ accent, accessError, onSignedIn }) {
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const check = async () => {
@@ -2546,7 +2546,8 @@ function PasswordOverlay({ accent, accessError }) {
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await firebase.auth().signInWithPopup(provider);
+      const result = await firebase.auth().signInWithPopup(provider);
+      if (onSignedIn) onSignedIn(result.user);
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
         setError(err.code === 'auth/unauthorized-domain' ? '網站登入授權尚未設定，請聯絡管理者。' : '登入未完成，請允許登入視窗後再試。');
@@ -2589,9 +2590,7 @@ function PasswordOverlay({ accent, accessError }) {
 
         {(error || accessError) && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 12, fontWeight: 600 }}>{error || accessError}</div>}
         
-        <div style={{ marginTop: 24 }}>
-          <a href="?player" style={{ color: 'var(--dim)', fontSize: 12, textDecoration: 'none' }}>我是球員，切換至唯讀模式</a>
-        </div>
+
       </div>
     </div>
   );
@@ -2609,6 +2608,7 @@ function App() {
   const [share, setShare] = React.useState('');
   const [rankingScope, setRankingScope] = React.useState(null);
   const [accessError, setAccessError] = React.useState('');
+  const [loginAttempt, setLoginAttempt] = React.useState(0);
 
   React.useEffect(function() {
     let active = true, generation = 0;
@@ -2619,11 +2619,10 @@ function App() {
       if (!user || RANKING_PLAYER_VIEW) { setAuthReady(true); return; }
       setAuthReady(false); setAccessError('');
       try {
-        const token = await user.getIdToken();
-        const response = await fetch((window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app') + '/api/registration-admin?scope=access', { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
-        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? '這個 Google 帳號尚未獲得團長權限，請切換至已核准帳號。' : '無法確認團長權限，請稍後重試。');
-        if (!active || request !== generation) return;
+        const { token, response } = await RankingAuthAccess.request(user);
+        if (!response.ok) throw new Error(RankingAuthAccess.errorMessage(response.status));
         const access = await response.json();
+        if (!active || request !== generation || firebase.auth().currentUser !== user) return;
         setModuleAccess(access.modules || { registration: true, ranking: true }); setPlatformRole(access.role);
         var savedScope = null;
         if (window.REGISTRATION_V2) { try { savedScope = JSON.parse(sessionStorage.getItem('rankingScope:' + user.uid) || 'null'); } catch (_) {} }
@@ -2637,32 +2636,34 @@ function App() {
       }
     });
     return function() { active = false; unsubscribe(); };
-  }, []);
+  }, [loginAttempt]);
 
   React.useEffect(function() {
     if (!authenticated) return;
-    let active = true;
+    let active = true, inFlight = false;
     async function refreshAccess() {
+      if (inFlight) return;
+      const user = firebase.auth().currentUser;
+      if (!user) return;
+      inFlight = true;
       try {
-        const response = await fetch((window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app') + '/api/registration-admin?scope=access', { cache: 'no-store', headers: { Authorization: 'Bearer ' + window.__AUTH_TOKEN__ } });
-        if (!active) return;
-        if (response.status === 401 || response.status === 403) { window.__AUTH_TOKEN__ = null; setAuthenticated(false); setAccessError('團長權限已移除，請聯絡平台 Admin。'); return; }
-        if (response.ok) { const access = await response.json(); if (active) setModuleAccess(access.modules || { registration: true, ranking: true }); }
-      } catch (_) {}
+        const { token, response } = await RankingAuthAccess.request(user);
+        const access = response.ok ? await response.json() : null;
+        if (!active || firebase.auth().currentUser !== user) return;
+        if (response.status === 401 || response.status === 403) {
+          window.__AUTH_TOKEN__ = null; setAuthenticated(false);
+          setAccessError(RankingAuthAccess.errorMessage(response.status)); return;
+        }
+        if (access) {
+          window.__AUTH_TOKEN__ = token;
+          setModuleAccess(access.modules || { registration: true, ranking: true });
+          setPlatformRole(access.role);
+        }
+      } catch (_) {} finally { inFlight = false; }
     }
     const timer = setInterval(refreshAccess, 15000);
     window.addEventListener('focus', refreshAccess);
     return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refreshAccess); };
-  }, [authenticated]);
-
-  // ID Token 有效期約 1 小時，每 30 分鐘主動更新，避免排點到一半寫入失敗
-  React.useEffect(function() {
-    if (!authenticated) return;
-    var t = setInterval(function() {
-      var u = firebase.auth().currentUser;
-      if (u) u.getIdToken(true).then(function(tok) { window.__AUTH_TOKEN__ = tok; });
-    }, 30 * 60 * 1000);
-    return function() { clearInterval(t); };
   }, [authenticated]);
 
   function handleLogout() {
@@ -3357,7 +3358,7 @@ function App() {
   if (showLock) {
     return (
       <React.Fragment>
-        <PasswordOverlay accent={tweaks.accent} accessError={accessError} />
+        <PasswordOverlay accent={tweaks.accent} accessError={accessError} onSignedIn={() => setLoginAttempt(value => value + 1)} />
         <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
       </React.Fragment>
     );

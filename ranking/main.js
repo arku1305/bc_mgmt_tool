@@ -940,22 +940,6 @@ function Sidebar({ players, onCourtIds, meId, theme, accent, role, onEditLevel, 
         </div>
         {isAdmin ? (
           <div style={{ display: 'flex', gap: 6, flexShrink: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button onClick={onActivityImport} style={{ background: 'transparent', color: accent, border: '1px solid var(--line)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer' }}>活動匯入</button>
-            <button
-              onClick={() => setImportOpen(true)}
-              title="批次匯入臨打名單"
-              style={{
-                background: 'transparent',
-                border: `1px solid var(--line)`,
-                color: 'var(--muted)', borderRadius: 7, padding: '5px 10px',
-                fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                fontFamily: "'Noto Sans TC', sans-serif", letterSpacing: 0.5,
-                whiteSpace: 'nowrap',
-                transition: 'all 120ms',
-              }}
-            >
-              匯入
-            </button>
             <button
               onClick={() => setAddOpen(true)}
               style={{

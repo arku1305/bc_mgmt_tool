@@ -24,7 +24,7 @@ function draftRoster(session, fixedMembers, teamId) {
     names.add(person.name);
   });
   roster.sort((a, b) => a.registrationId.localeCompare(b.registrationId));
-  const event = { teamId, eventTime: session.eventTime, ...(session.activityId ? { eventId: session.activityId, teamName: session.teamName, location: session.location, guestFee: session.guestFee, fixedFee: session.fixedFee } : {}) };
+  const event = { teamId, eventTime: session.eventTime, ...(session.activityId ? { eventId: session.activityId, teamName: session.teamName ?? '', location: session.location ?? '', guestFee: session.guestFee ?? null, fixedFee: session.fixedFee ?? null } : {}) };
   return { event, roster, fingerprint: digest({ event, roster }) };
 }
 

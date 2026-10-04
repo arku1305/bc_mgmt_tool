@@ -3,7 +3,7 @@ const core=require('../報名機器人/lib/registration');
 const fields={name:'測試甲團',date:'2026-10-06',startTime:'20:00',endTime:'22:00',location:'虛構場地',totalCapacity:2,guestFee:200,fixedFee:150,fixedMembers:['固定甲'],frequency:'once',courtCount:2};
 function fixture(coldCache=false){
  const store={}, writes=[],listeners=new Set();
- const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{let p=store;for(const key of parts.slice(0,-1))p=p[key]||=( {} );p[parts.at(-1)]=JSON.parse(JSON.stringify(value));writes.push(location);};return{on:()=>listeners.add(location),off:()=>listeners.delete(location),once:async()=>({val:read}),set:async value=>put(value),transaction:async fn=>{const next=fn(coldCache&&!listeners.has(location)?null:read());if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:read}};}};}};
+ const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{const check=v=>{if(v===undefined)throw new Error('Firebase 不接受 undefined');if(v&&typeof v==='object')Object.values(v).forEach(check);};check(value);let p=store;for(const key of parts.slice(0,-1))p=p[key]||=( {} );p[parts.at(-1)]=JSON.parse(JSON.stringify(value));writes.push(location);};return{on:()=>listeners.add(location),off:()=>listeners.delete(location),once:async()=>({val:read}),set:async value=>put(value),transaction:async fn=>{const next=fn(coldCache&&!listeners.has(location)?null:read());if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:read}};}};}};
  const module={exports:{}};vm.runInNewContext(fs.readFileSync('報名機器人/lib/club-service.js','utf8'),{module,Date,process:{env:{}},require:name=>name.startsWith('.')?require(path.resolve('報名機器人/lib',name)):require(name)});
  async function call(user,query={},body){const result={status:200};const res={status(n){result.status=n;return this;},json(value){result.body=value;},end(){}};await module.exports.service({method:body?'POST':'GET',query,body},res,db,user);return result;}
  return{store,writes,db,call,...module.exports};
@@ -72,4 +72,18 @@ test('冷快取建立新活動真的保存新場次，選取新活動，保留�
  assert.equal(result.body.events.length,2);assert.equal(result.body.activity.date,'2026-10-13');
  assert.deepEqual(result.body.fixed.map(p=>p.name),['固定乙']);
  assert.equal(JSON.stringify(f.store.clubsV2[first.clubId].events[first.selectedEventId]),old);
+});
+
+test('費用未填且Firebase未存空值時，名單仍能確認並保存交接版本',async()=>{
+ const f=fixture(true),user={uid:'leader'};
+ const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,guestFee:null,fixedFee:null}})).body;
+ const session=f.store.clubsV2[first.clubId].events[first.selectedEventId];delete session.guestFee;delete session.fixedFee;
+ const {handoff}=require('../報名機器人/lib/club-handoff');
+ const query={club:first.clubId,event:first.selectedEventId};
+ function response(){const result={status:200};return{result,status(n){result.status=n;return this;},json(value){result.body=value;},end(){}};}
+ const read=response();await handoff({method:'GET',query},read,f.db,user);
+ const write=response();await handoff({method:'POST',query,body:{fingerprint:read.result.body.fingerprint}},write,f.db,user);
+ assert.equal(write.result.status,200);assert.equal(write.result.body.event.guestFee,null);assert.equal(write.result.body.event.fixedFee,null);
+ assert.equal(write.result.body.roster.length,1);assert.ok(f.store.rosterHandoffsV2[first.clubId][first.selectedEventId][read.result.body.fingerprint]);
+ assert.equal(f.store.eventSchedulesV2,undefined);
 });

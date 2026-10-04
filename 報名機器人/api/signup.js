@@ -1,3 +1,4 @@
+const cachedTransaction = require('../lib/cached-transaction');
 const { db } = require('./_lib');
 const { publicPaths } = require('../lib/access-service');
 const { publicCommand } = require('../lib/public-command');
@@ -13,7 +14,7 @@ module.exports = async (req, res) => {
     if (!scope.registration) return res.status(400).json({ success: false, message: '請先選擇活動' });
     const ref = db.ref(scope.registration + (scope.directSession ? '' : '/current'));
     await ref.once('value');
-    const result = await ref.transaction(value => {
+    const result = await cachedTransaction(ref, value => {
       message = null;
       try {
         const next = publicCommand(value, 'signup', req.body || {}, now);

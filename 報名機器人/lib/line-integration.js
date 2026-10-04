@@ -8,18 +8,7 @@ const random = () => randomBytes(24).toString('base64url');
 const read = async (db,path) => (await db.ref(path).once('value')).val();
 const root = 'lineIntegrationV2';
 function init(state) { return { links:{},users:{},attempts:{},groups:{},publications:{},processed:{},...state }; }
-async function cachedTransaction(ref,update) {
-  // Keep the read listener alive until the transaction finishes. A one-shot
-  // read can release its cache before the SDK's initial transaction callback.
-  const keepCache=()=>{};
-  if(typeof ref.on==='function')ref.on('value',keepCache);
-  try {
-    await ref.once('value');
-    return await ref.transaction(value=>update(value == null ? null : JSON.parse(JSON.stringify(value))));
-  } finally {
-    if(typeof ref.off==='function')ref.off('value',keepCache);
-  }
-}
+const cachedTransaction = require('./cached-transaction');
 async function transact(db,fn) {
   let error;
   const result=await cachedTransaction(db.ref(root),value=>{error=null;try{return fn(init(value));}catch(e){error=e;return;}});

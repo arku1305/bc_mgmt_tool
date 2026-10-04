@@ -1,3 +1,4 @@
+const cachedTransaction = require('./cached-transaction');
 const {randomBytes}=require('node:crypto');
 const {parseCommand,applyLine}=require('./line-command');
 const {render}=require('./line-message-renderer');
@@ -24,7 +25,7 @@ async function execute(db,event,command,target,transport,now){
   const integration=require('./line-integration'),commandId=event.webhookEventId||event.message?.id;
   if(!commandId)throw new Error('缺少訊息識別');
   const id=integration.hash(commandId),ref=db.ref('clubsV2/'+target.clubId);await ref.once('value');let result,error,duplicate;
-  const transaction=await ref.transaction(club=>{
+  const transaction=await cachedTransaction(ref, club=>{
     result=null;error=null;duplicate=false;
     const session=club?.events?.[target.eventId],binding=session?.linePublications?.[target.groupKey];
     if(!session||!require('./activity-time').current(club,session,now)||!binding?.active||binding.publicationKey!==target.publicationKey||ended(session,now)){error='活動已結束或已停止群組連結，請重新查詢';return;}
@@ -63,7 +64,7 @@ async function handle(db,event,transport,now=Date.now()){
     const target=available.find(t=>t.clubId===selected.clubId&&t.eventId===selected.eventId);
     if(!target){await transport.reply(event.replyToken,integration.textMessages('這場已結束、暫停或群組連結已停止，請重新輸入指令。'));return true;}
     const ref=db.ref(root+'/choices/'+choiceKey);await ref.once('value');
-    const claimed=await ref.transaction(c=>c&&!c.usedAt&&c.expiresAt>now&&c.lineId===source.userId&&c.groupId===source.groupId?{...c,usedAt:now}:undefined);
+    const claimed=await cachedTransaction(ref, c=>c&&!c.usedAt&&c.expiresAt>now&&c.lineId===source.userId&&c.groupId===source.groupId?{...c,usedAt:now}:undefined);
     if(!claimed.committed){await transport.reply(event.replyToken,integration.textMessages('這個選擇已處理，請重新輸入指令。'));return true;}
     return execute(db,event,command,target,transport,now);
   }
@@ -75,7 +76,7 @@ async function handle(db,event,transport,now=Date.now()){
     return {type:'action',action:{type:'postback',label:((i+1)+'. '+t.session.eventDate+' '+t.session.startTime).slice(0,20),displayText:'選擇 '+t.session.teamName+' '+t.session.eventTime,data:'jkchoose:'+token+':'+key}};
   });
   const dedupKey=integration.hash(event.webhookEventId||event.message.id),ref=db.ref(root+'/choiceRequests/'+dedupKey);await ref.once('value');
-  const claim=await ref.transaction(c=>c?undefined:{at:now});if(!claim.committed)return true;
+  const claim=await cachedTransaction(ref, c=>c?undefined:{at:now});if(!claim.committed)return true;
   await db.ref(root+'/choices/'+integration.hash(token)).set({command,targets,lineId:source.userId,groupId:source.groupId,expiresAt:now+5*60*1000});
   await transport.reply(event.replyToken,[{type:'text',text:'請選擇要處理的活動（5 分鐘內有效）。\n'+available.slice(0,13).map((t,i)=>(i+1)+'. '+t.session.teamName+' · '+t.session.eventTime).join('\n')+(available.length>13?'先列出前 13 場，其他場請使用本場網頁連結。':''),quickReply:{items:buttons}}]);return true;
 }

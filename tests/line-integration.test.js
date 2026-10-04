@@ -94,6 +94,17 @@ test('解除連結同時撤銷尚未回呼的 nonce，延遲回呼不得重新�
  assert.equal((await f.view(f.db,f.users.leader)).linked,false);
 });
 async function preparePublished(f,scope,now=300){await f.link('leader');await f.handleEvent(f.db,f.event('leader','加入揪凱'),f.transport,200);const groupKey=f.hash('group-a');await f.api('leader',{action:'publication',...scope,groupKey,active:true});const v=await f.view(f.db,f.users.leader,scope.clubId,scope.eventId);await f.handleEvent(f.db,f.event('leader',v.publications[0].command),f.transport,now);}
+test('冷啟動公告後 LINE 與網頁交易可報名；結束活動仍拒絕報名',async()=>{
+ const f=fixture(true),scope=f.club();await preparePublished(f,scope);
+ await f.handleEvent(f.db,f.event('guest','群友甲+1','cold-signup'),f.transport,400);
+ assert.match(f.replies.at(-1),/報名成功/);
+ const transaction=require('../報名機器人/lib/cached-transaction'),web=require('../報名機器人/lib/public-command');
+ const ref=f.db.ref('clubsV2/'+scope.clubId+'/events/'+scope.eventId);
+ const result=await transaction(ref,s=>web.publicCommand(s,'signup',{name:'網頁甲',phone:'0912345678',eventId:scope.eventId},401));
+ assert.equal(result.committed,true);assert.deepEqual(core.entriesOf(result.snapshot.val()).map(p=>p.name),['群友甲','網頁甲']);assert.equal(f.listeners.size,0);
+ await f.handleEvent(f.db,f.event('guest','查名單','ended-cold'),f.transport,Date.parse('2026-10-10T22:00:00+08:00'));
+ assert.match(f.replies.at(-1),/沒有可處理的活動/);
+});
 test('一般球友不用綁定可報名代報、同名警告、取消、固定請假與額滿恢复；重送不重複',async()=>{
  const f=fixture(),scope=f.club();await preparePublished(f,scope);const event=f.store.clubsV2[scope.clubId].events[scope.eventId];event.totalCapacity=3;
  await f.handleEvent(f.db,f.event('guest','小明+2','guest-1'),f.transport,400);assert.deepEqual(core.entriesOf(f.store.clubsV2[scope.clubId].events[scope.eventId]).map(p=>p.name),['小明1','小明2']);const count=f.replies.length;

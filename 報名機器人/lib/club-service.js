@@ -1,5 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const core = require('./registration');
+const cachedTransaction = require('./cached-transaction');
 const model = require('./club-model');
 const { render } = require('./line-message-renderer');
 const validClub = id => typeof id === 'string' && /^club-[a-f0-9-]{36}$/.test(id);
@@ -34,10 +35,10 @@ async function service(req, res, db, user) {
   const club = create ? null : await ownedClub(db,user,id);
   if (!create && !club) return res.status(403).json({message:'無法管理此球團'});
   if (req.method === 'GET') return res.json(view(club,req.query.event));
-  const ref = db.ref('clubsV2/' + id); await ref.once('value');
+  const ref = db.ref('clubsV2/' + id);
   const context = { uid:user.uid, clubId:id,eventId:'event-' + randomUUID(),now:Date.now(),publicToken:randomUUID() };
   let error;
-  const result = await ref.transaction(value => {
+  const result = await cachedTransaction(ref, value => {
     error = null;
     if (!create && (value?.ownerUid !== user.uid || core.digest(value) !== req.body.expectedRevision)) return;
     try {
@@ -49,7 +50,7 @@ async function service(req, res, db, user) {
     }
     catch (err) { error=err.message; return; }
   });
-  if (!result.committed) return res.status(error ? 422 : 409).json({message:error || '資料已更新，請重新整理'});
+  if (!result.committed) return res.status(error ? 422 : 409).json({message:error || '本次操作未完成：活動名單已被其他操作變更，請重新載入後再試。'});
   const saved = result.snapshot.val();
   if (create) {
     await db.ref('userClubsV2/' + user.uid + '/' + id).set(true);

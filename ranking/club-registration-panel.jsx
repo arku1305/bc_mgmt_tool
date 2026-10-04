@@ -1,7 +1,7 @@
 function ClubRegistrationAdmin({ onImport }) {
   const [clubs,setClubs] = React.useState([]), [clubId,setClubId] = React.useState(''), [eventId,setEventId] = React.useState('');
   const [data,setData] = React.useState(null), [form,setForm] = React.useState(null), [error,setError] = React.useState('');
-  const [busy,setBusy] = React.useState(false), [notice,setNotice] = React.useState(''), [guest,setGuest] = React.useState('');
+  const [busy,setBusy] = React.useState(false), [guest,setGuest] = React.useState('');
   const [checkDate,setCheckDate] = React.useState('2026-10-10T09:00');
   const base = window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app';
   const style = {padding:12,borderRadius:8,border:'1px solid #42534a',background:'#10161d',color:'#edf4f0',fontSize:16};
@@ -23,10 +23,10 @@ function ClubRegistrationAdmin({ onImport }) {
     return ()=>{active=false;};
   },[clubId,eventId]);
   async function change(action,details={}) {
-    setBusy(true);setError('');setNotice('');
+    setBusy(true);setError('');
     try {
       const result=await request('POST',{action,expectedRevision:data?.revision,eventId,...details});
-      setData(result);setForm(null);setGuest('');setNotice('已儲存；未修改排點或帳務，也未發送 LINE 訊息。');
+      setData(result);setForm(null);setGuest('');
       if(action==='createClub') {await refreshClubs();setClubId(result.clubId);}
       if(result.selectedEventId)setEventId(result.selectedEventId);
     } catch(e){setError(e.message);} finally{setBusy(false);}
@@ -49,9 +49,8 @@ function ClubRegistrationAdmin({ onImport }) {
   return <section aria-label="多球團報名管理" style={{flex:1,overflowY:'auto',padding:24,color:'#edf4f0'}}><div style={{maxWidth:1000,margin:'0 auto'}}>
     <h1>報名管理</h1><p>選擇自己的球團與活動，整理名單並預覽公告。</p>
     {error&&<p role="alert" style={{...card,color:'#ffb5b5'}}>{error}<button style={button} onClick={()=>request('GET').then(setData).catch(e=>setError(e.message))}>重新整理</button></p>}
-    {notice&&<p role="status" style={card}>{notice}</p>}
     <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
-      <label>我的球團 <select style={style} aria-label="我的球團" value={clubId} disabled={busy} onChange={e=>{setClubId(e.target.value);setEventId('');setNotice('');}}><option value="">請選擇球團</option>{clubs.map(c=><option key={c.clubId} value={c.clubId}>{c.name}</option>)}</select></label>
+      <label>我的球團 <select style={style} aria-label="我的球團" value={clubId} disabled={busy} onChange={e=>{setClubId(e.target.value);setEventId('');}}><option value="">請選擇球團</option>{clubs.map(c=><option key={c.clubId} value={c.clubId}>{c.name}</option>)}</select></label>
       <button style={button} disabled={busy} onClick={()=>start('createClub')}>新增球團與首場活動</button>
       {data&&<label>活動 <select style={style} aria-label="活動" value={eventId} disabled={busy} onChange={e=>setEventId(e.target.value)}><option value="">請選擇活動</option>{data.events.map(e=><option key={e.eventId} value={e.eventId}>{e.eventTime} · {e.ended?'已結束':e.registrationOpen?'開放':'暫停'}</option>)}</select></label>}
       {data&&<button style={button} disabled={busy} onClick={()=>start('createEvent')}>建立新活動</button>}

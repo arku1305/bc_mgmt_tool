@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const core=require('../報名機器人/lib/registration');
 const fields={name:'測試甲團',date:'2026-10-06',startTime:'20:00',endTime:'22:00',location:'虛構場地',totalCapacity:2,guestFee:200,fixedFee:150,fixedMembers:['固定甲'],frequency:'once',courtCount:2};
-function fixture(){
- const store={}, writes=[];
- const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{let p=store;for(const key of parts.slice(0,-1))p=p[key]||=( {} );p[parts.at(-1)]=JSON.parse(JSON.stringify(value));writes.push(location);};return{once:async()=>({val:read}),set:async value=>put(value),transaction:async fn=>{const next=fn(read());if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:read}};}};}};
+function fixture(coldCache=false){
+ const store={}, writes=[],listeners=new Set();
+ const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{let p=store;for(const key of parts.slice(0,-1))p=p[key]||=( {} );p[parts.at(-1)]=JSON.parse(JSON.stringify(value));writes.push(location);};return{on:()=>listeners.add(location),off:()=>listeners.delete(location),once:async()=>({val:read}),set:async value=>put(value),transaction:async fn=>{const next=fn(coldCache&&!listeners.has(location)?null:read());if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:read}};}};}};
  const module={exports:{}};vm.runInNewContext(fs.readFileSync('報名機器人/lib/club-service.js','utf8'),{module,Date,process:{env:{}},require:name=>name.startsWith('.')?require(path.resolve('報名機器人/lib',name)):require(name)});
  async function call(user,query={},body){const result={status:200};const res={status(n){result.status=n;return this;},json(value){result.body=value;},end(){}};await module.exports.service({method:body?'POST':'GET',query,body},res,db,user);return result;}
  return{store,writes,db,call,...module.exports};
@@ -61,4 +61,15 @@ test('活動交接與排點按場分開；其他團長和 Admin 不得存取，�
  const club=f.store.clubsV2[first.clubId];club.events[query.event]=require('../報名機器人/lib/public-command').publicCommand(club.events[query.event],'signup',{name:'新臨打',phone:'0912345678',eventId:query.event},300);
  res=response();await handoff({method:'POST',query,body:{fingerprint:draft.fingerprint}},res,f.db,user);assert.equal(res.result.status,409);
  assert.equal(await f.publicScope(f.db,{clubId:first.clubId},'constructor'),null);
+});
+
+test('冷快取建立新活動真的保存新場次，選取新活動，保留舊名單',async()=>{
+ const f=fixture(true),user={uid:'leader'};
+ const first=(await f.call(user,{}, {action:'createClub',fields})).body;
+ const old=JSON.stringify(f.store.clubsV2[first.clubId].events[first.selectedEventId]);
+ const result=await f.call(user,{club:first.clubId},{action:'createEvent',expectedRevision:first.revision,fields:{...fields,date:'2026-10-13',fixedMembers:['固定乙']}});
+ assert.equal(result.status,200);assert.notEqual(result.body.selectedEventId,first.selectedEventId);
+ assert.equal(result.body.events.length,2);assert.equal(result.body.activity.date,'2026-10-13');
+ assert.deepEqual(result.body.fixed.map(p=>p.name),['固定乙']);
+ assert.equal(JSON.stringify(f.store.clubsV2[first.clubId].events[first.selectedEventId]),old);
 });

@@ -61,7 +61,7 @@ function ClubRegistrationAdmin({ onImport }) {
       <article style={card}><h2>{data.name} · {a.eventTime}</h2><p>{a.location} · 名額 {a.totalCapacity} 人 · 剩餘 {data.remaining} 位 · 臨打 {a.guestFee==null?'費用未設定':'$'+a.guestFee}</p><p>{a.frequency==='weekly'?'固定每週自動開團':'單次活動'} · {a.ended?'已結束，停止報名':a.waiting?'等待本系列前場結束或開放日':a.registrationOpen?'開放報名':'暫停報名'}</p>
         <button style={button} disabled={busy} onClick={()=>start('edit')}>編輯本場</button> <button style={button} disabled={busy||a.ended||a.waiting} onClick={()=>change('setOpen',{open:!a.registrationOpen})}>{a.registrationOpen?'暫停報名':'開放報名'}</button>
         {' '}<button style={button} disabled={busy} onClick={()=>onImport({clubId,eventId,publicToken:data.publicToken})}>確認名單並匯入排點</button>
-        <p>本場排點獨立保存。匯入先確認差異，保留團長人工新增與設定。</p>
+        <p>本場排點獨立保存。確認匯入後會覆蓋排點名單。</p>
       </article>
       <article style={card}><h2>球友報名連結</h2><p>本場活動：<a href={eventLink.toString()} target="_blank" rel="noopener noreferrer" style={{color:'#8ff3b5',overflowWrap:'anywhere'}}>{eventLink.toString()}</a></p></article>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18}}>

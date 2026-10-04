@@ -56,37 +56,16 @@ function fixture(writeStatus = 200, oldEvent = false) {
   };
 }
 
-test('交接畫面：確認、選擇、條件寫入保留其他資料，成功後才關閉', { skip: !babelPath && '需要 BABEL_BUNDLE 指向 Babel 測試工具' }, async () => {
-  const ui = fixture(); await ui.start();
-  await ui.click('確認名單並預覽匯入差異');
-  assert.match(ui.text(), /新增：測試甲/);
-  assert.equal(ui.calls.filter(c => c.options.method === 'PUT').length, 0);
-  await ui.click('套用選取的變更');
-  assert.equal(ui.applied.players.length, 1); assert.equal(ui.closed, true);
-  const write = ui.calls.find(c => c.options.method === 'PUT');
-  assert.equal(write.options.headers['If-Match'], 'test-etag');
-  const saved = JSON.parse(write.options.body);
-  assert.deepEqual(saved.messages, { keep: true });
-  assert.equal(saved.players[0].checkedIn, false); assert.equal(saved.eventIntegration.eventId, 'event-test');
+test('覆蓋前再確認；取消不寫入，確認後重建名單與場次並保留存檔',{skip:!babelPath},async()=>{
+ const ui=fixture(200,true);await ui.start();await ui.click('確認名單並匯入');
+ assert.match(ui.text(),/確認覆蓋排點名單/);assert.equal(ui.calls.filter(c=>c.options.method==='POST'||c.options.method==='PUT').length,0);
+ await ui.click('返回');assert.equal(ui.closed,false);await ui.click('確認名單並匯入');await ui.click('確認覆蓋並匯入');
+ assert.equal(ui.closed,true);assert.equal(ui.applied.players.length,1);
+ const write=ui.calls.find(c=>c.options.method==='PUT'),saved=JSON.parse(write.options.body);
+ assert.equal(write.options.headers['If-Match'],'test-etag');assert.equal(saved.players[0].name,'測試甲');assert.equal(saved.players[0].paid,false);assert.equal(saved.players[0].checkedIn,false);
+ assert.equal(saved.players.some(p=>p.id==='old-manual'),false);assert.deepEqual(saved.roundNumbers,[1,1]);
+ assert.equal(Object.values(saved.activityArchives)[0].players[0].paid,true);assert.deepEqual(saved.messages,{keep:true});
 });
-test('交接畫面：排點版本衝突或拒絕寫入，不顯示成功、不關閉', { skip: !babelPath && '需要 BABEL_BUNDLE 指向 Babel 測試工具' }, async () => {
-  for (const status of [412, 403]) {
-    const ui = fixture(status); await ui.start();
-    await ui.click('確認名單並預覽匯入差異'); await ui.click('套用選取的變更');
-    assert.equal(ui.applied, null); assert.equal(ui.closed, false);
-    assert.match(ui.text(), status === 412 ? /排點資料已被調整/ : /匯入未成功/);
-  }
-});
-
-test('換場必須明確保存上一場後預覽，舊人工設定與繳費紀錄存檔且仍受版本保護', { skip: !babelPath && '需要 BABEL_BUNDLE' }, async () => {
-  const ui = fixture(200, true); await ui.start();
-  await ui.click('確認名單並預覽匯入差異');
-  assert.match(ui.text(), /排點仍屬於上一場/);
-  assert.equal(ui.calls.filter(c => c.options.method === 'PUT').length, 0);
-  await ui.click('保存上一場，預覽新活動');
-  await ui.click('套用選取的變更');
-  const saved = JSON.parse(ui.calls.find(c => c.options.method === 'PUT').options.body);
-  assert.equal(Object.values(saved.activityArchives)[0].players[0].paid, true);
-  assert.equal(Object.values(saved.activityArchives)[0].players[0].level, 9);
-  assert.equal(saved.players[0].name, '測試甲'); assert.equal(saved.players.some(p => p.id === 'old-manual'), false);
+test('排點版本衝突或權限拒絕不覆蓋、不關閉',{skip:!babelPath},async()=>{
+ for(const status of [412,403]){const ui=fixture(status);await ui.start();await ui.click('確認名單並匯入');await ui.click('確認覆蓋並匯入');assert.equal(ui.applied,null);assert.equal(ui.closed,false);assert.match(ui.text(),status===412?/排點資料已被調整/:/匯入未成功/);}
 });

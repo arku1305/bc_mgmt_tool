@@ -7,7 +7,7 @@ const DEFAULT_PLAYERS = [];
 
 const DEFAULT_EVENT = {
   day: '',
-  time: '尚未匯入活動',
+  time: '',
   location: '',
 };
 
@@ -811,6 +811,7 @@ function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo })
             fontFamily: "'JetBrains Mono', monospace",
           }}>{isAdmin ? '團長' : 'PLAYER'}</span>
         </div>
+        {!isAdmin && <>
         <div style={{ height: 20, width: 1, background: 'var(--line)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <span style={fieldStyle}>{eventInfo.day}</span>
@@ -819,21 +820,11 @@ function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo })
           {dot}
           <span style={fieldStyle}>{eventInfo.location}</span>
         </div>
+        </>}
       </div>
 
       {isAdmin && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={onLogout}
-            style={{
-              background: 'transparent', border: '1px solid var(--line)',
-              color: 'var(--dim)', padding: '7px 12px', borderRadius: 8,
-              fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              fontFamily: "'Noto Sans TC', sans-serif",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color='var(--text)'; e.currentTarget.style.borderColor='#3a4555'; }}
-            onMouseLeave={e => { e.currentTarget.style.color='var(--dim)'; e.currentTarget.style.borderColor='var(--line)'; }}
-          >登出</button>
           <button
             onClick={onReset}
             style={{
@@ -2669,6 +2660,13 @@ function App() {
   const isAdmin = role === 'admin';
   const [managementView, setManagementView] = React.useState(new URLSearchParams(window.location.search).get('view') === 'ranking' ? 'ranking' : 'registration');
   const showLock = isAdmin && authReady && !authenticated;
+  React.useEffect(() => {
+    if (moduleAccess[managementView] === false || (managementView === 'permissions' && platformRole !== 'platformAdmin')) {
+      const next = ['registration', 'ranking'].find(v => moduleAccess[v] !== false);
+      if (next) setManagementView(next);
+      else if (platformRole === 'platformAdmin') setManagementView('permissions');
+    }
+  }, [moduleAccess.registration, moduleAccess.ranking, platformRole, managementView]);
 
   // ── 內部工具：將 courts 陣列轉成 match 物件，呼叫三個儲存函式 ────────────
   function saveToStorage(pList, cList, rNums) {
@@ -3348,13 +3346,9 @@ function App() {
     );
   }
 
-  const managementNav = isAdmin && <nav aria-label="團長管理導覽" style={{ display: 'flex', gap: 8, padding: '10px 16px', background: '#17231d', color: '#edf4f0', alignItems: 'center' }}>
-    <strong style={{ marginRight: 8 }}>球團管理</strong>
-    {(platformRole === 'platformAdmin' ? ['registration', 'ranking', 'permissions'] : ['registration', 'ranking']).map(v => <button key={v} onClick={() => setManagementView(v)} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #42534a', background: managementView === v ? '#8ff3b5' : '#22362c', color: managementView === v ? '#0c1016' : '#edf4f0', cursor: 'pointer' }}>{v === 'registration' ? '報名管理' : v === 'ranking' ? '排點管理' : '權限管理'}</button>)}
-    <button onClick={handleLogout} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: '#edf4f0', cursor: 'pointer' }}>登出</button>
-  </nav>;
+  const managementNav = isAdmin && <ManagementMenu role={platformRole} access={moduleAccess} view={managementView} onSelect={setManagementView} onLogout={handleLogout} />;
   function appliedRegistration(list, binding, switched) {
-    if (switched) { window.location.reload(); return; }
+    if (switched) { setCourts(EMPTY_COURTS); setRoundNumbers([1, 1]); }
     setPlayers(list.map(window.normalizePlayer)); setEventIntegration(binding); setManagementView('ranking');
   }
   if (isAdmin && moduleAccess[managementView] === false) return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', color: '#edf4f0' }}>{managementNav}<p style={{ padding: 24 }}>{managementView === 'registration' ? '報名管理' : '排點管理'}已停止使用，請聯絡平台 Admin。</p></div>;
@@ -3394,7 +3388,7 @@ function App() {
         onShowQR={function() { setQROpen(true); }}
         onLogout={handleLogout}
         role={role}
-        eventInfo={{ day: eventIntegration ? '活動' : '', time: eventIntegration ? eventIntegration.eventTime : '尚未匯入活動', location: eventIntegration?.location || '' }}
+        eventInfo={{ day: eventIntegration ? '活動' : '', time: eventIntegration ? eventIntegration.eventTime : '', location: eventIntegration?.location || '' }}
       />
 
       {scheduleError && <div role="alert" style={{ background: '#463a20', color: '#ffe0a0', padding: 10 }}>{scheduleError}</div>}

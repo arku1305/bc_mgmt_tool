@@ -1,3 +1,4 @@
+const cachedTransaction = require('./cached-transaction');
 const { ownedClub } = require('./club-service');
 const { fixedOf } = require('./registration');
 const { draftRoster } = require('../api/_handoff');
@@ -11,7 +12,7 @@ async function handoff(req,res,db,user) {
   if(req.method!=='POST')return res.status(405).end();
   if(req.body?.fingerprint!==draft.fingerprint)return res.status(409).json({message:'名單已更新，請重新預覽'});
   const now=Date.now();
-  const result=await ref.transaction(current=>{
+  const result=await cachedTransaction(ref,current=>{
     if(!current || draftRoster(current,fixedOf(current),club.clubId).fingerprint!==draft.fingerprint)return;
     return {...current,rosterHandoff:{eventId,fingerprint:draft.fingerprint,confirmedAt:now,confirmedBy:user.uid}};
   });

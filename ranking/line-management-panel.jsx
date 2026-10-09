@@ -4,7 +4,7 @@ function LineManagementPanel({clubId='',eventId='',onChanged}) {
   const [choices,setChoices]=React.useState([]),[player,setPlayer]=React.useState('organizer');
   const [simulation,setSimulation]=React.useState({group:'group-a',text:'加入揪凱'}),[messages,setMessages]=React.useState([]),[privateText,setPrivateText]=React.useState('綁定團長');
   const style={padding:10,borderRadius:8,border:'1px solid #42534a',background:'#10161d',color:'#edf4f0',fontSize:16},button={...style,cursor:'pointer'};
-  const endpoint=(window.ROSTER_API_URL||'https://badminton-signup-bot.vercel.app')+'/api/registration-admin?scope=line&club='+encodeURIComponent(clubId)+'&event='+encodeURIComponent(eventId);
+  const endpoint=(window.ROSTER_API_URL||'https://badminton-signup-bot.vercel.app')+'/api/registration-admin?scope=line&club='+encodeURIComponent(eventId?clubId:'')+'&event='+encodeURIComponent(eventId);
   async function request(body) {
     const token=await firebase.auth().currentUser.getIdToken();
     const res=await fetch(endpoint,{method:body?'POST':'GET',cache:'no-store',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});

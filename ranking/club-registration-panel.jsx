@@ -1,7 +1,10 @@
 function ClubRegistrationAdmin({ onImport }) {
   const [clubs,setClubs] = React.useState([]), [clubId,setClubId] = React.useState(''), [eventId,setEventId] = React.useState('');
+  const selectionKey='registrationSelection:'+firebase.auth().currentUser.uid;
+  const [selectionReady,setSelectionReady]=React.useState(false);
   const [data,setData] = React.useState(null), [form,setForm] = React.useState(null), [error,setError] = React.useState('');
   const [busy,setBusy] = React.useState(false), [guest,setGuest] = React.useState('');
+  const [deleteConfirm,setDeleteConfirm]=React.useState(false);
   const [checkDate,setCheckDate] = React.useState('2026-10-10T09:00');
   const base = window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app';
   const style = {padding:12,borderRadius:8,border:'1px solid #42534a',background:'#10161d',color:'#edf4f0',fontSize:16};
@@ -14,18 +17,35 @@ function ClubRegistrationAdmin({ onImport }) {
     const result = await res.json(); if(!res.ok) throw new Error(result.message || '操作失敗'); return result;
   }
   async function refreshClubs() { const result=await request('GET',null,'','');setClubs(result.clubs); return result.clubs; }
-  React.useEffect(()=>{refreshClubs().catch(e=>setError(e.message));},[]);
+  React.useEffect(()=>{
+    let active=true;
+    request('GET',null,'','').then(result=>{
+      if(!active)return;setClubs(result.clubs);
+      let saved=null;try{saved=JSON.parse(localStorage.getItem(selectionKey)||'null');}catch(_){}
+      if(saved&&typeof saved.clubId==='string'&&result.clubs.some(club=>club.clubId===saved.clubId)){
+        setClubId(saved.clubId);setEventId(typeof saved.eventId==='string'?saved.eventId:'');
+      }
+      setSelectionReady(true);
+    }).catch(e=>{if(active)setError(e.message);});
+    return()=>{active=false;};
+  },[selectionKey]);
+  React.useEffect(()=>{
+    if(!selectionReady)return;
+    try{localStorage.setItem(selectionKey,JSON.stringify({clubId,eventId}));}catch(_){}
+  },[selectionKey,selectionReady,clubId,eventId]);
   React.useEffect(()=>{
     let active=true;setData(null);setError('');
     if(!clubId)return;
     setBusy(true);
-    request('GET').then(result=>{if(!active)return;setData(result);if(!eventId&&result.events.length)setEventId(result.events[0].eventId);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setBusy(false);});
+    request('GET').then(result=>{if(!active)return;setData(result);if(!eventId&&result.events.some(e=>!e.ended))setEventId(result.events.find(e=>!e.ended).eventId);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setBusy(false);});
     return ()=>{active=false;};
   },[clubId,eventId]);
   async function change(action,details={}) {
+    if(['createClub','createEvent'].includes(action)&&Date.parse(details.fields.date+'T'+details.fields.startTime+':00+08:00')<=Date.now()){setError('活動開始時間已經過去，請選擇未來的日期與時間。');return;}
     setBusy(true);setError('');
     try {
       const result=await request('POST',{action,expectedRevision:data?.revision,eventId,...details});
+      if(action==='deleteClub') {await refreshClubs();setDeleteConfirm(false);setClubId('');setEventId('');setData(null);return;}
       setData(result);setForm(null);setGuest('');
       if(action==='createClub') {await refreshClubs();setClubId(result.clubId);}
       if(result.selectedEventId)setEventId(result.selectedEventId);
@@ -42,17 +62,25 @@ function ClubRegistrationAdmin({ onImport }) {
     const a=mode==='edit'?data.activity:{};
     setForm({mode,name:mode==='createClub'?'':data.name,date:a.date||'',startTime:a.startTime||defaults.startTime||'20:00',endTime:a.endTime||defaults.endTime||'22:00',location:a.location||defaults.location||'',totalCapacity:a.totalCapacity||defaults.totalCapacity||16,guestFee:mode==='edit'?(a.guestFee??''):(defaults.guestFee??''),fixedFee:mode==='edit'?(a.fixedFee??''):(defaults.fixedFee??''),fixedNames:mode==='createClub'?'':(defaults.fixedMembers||[]).join('\n'),frequency:mode==='edit'?a.frequency:(defaults.frequency||'once'),leadDays:defaults.leadDays??3,courtCount:a.courtCount||defaults.courtCount||2,shuttlecock:a.shuttlecock||defaults.shuttlecock||'',message:a.message??defaults.message??''});
   }
-  function field(key,value){setForm({...form,[key]:value});}
-  const a=data?.activity;
-  const link=new URL(window.SIGNUP_PAGE_URL||base+'/');link.searchParams.delete('event');if(data?.publicToken)link.searchParams.set('team',data.publicToken);
-  const eventLink=new URL(link);if(a)eventLink.searchParams.set('event',a.eventId);
+  function field(key,value){setForm({...form,[key]:value});if(key==='date'||key==='startTime')setError('');}
+  const todayTaiwan=new Date(Date.now()+8*60*60*1000).toISOString().slice(0,10);
+  const pastStart=!!form&&form.mode!=='edit'&&Date.parse(form.date+'T'+form.startTime+':00+08:00')<=Date.now();
+  const visibleEvents=(data?.events||[]).filter(event=>!event.ended);
+  React.useEffect(()=>{
+    if(data&&!visibleEvents.some(event=>event.eventId===eventId)){
+      const next=visibleEvents[0]?.eventId||'';if(next!==eventId)setEventId(next);
+    }
+  },[data,eventId]);
+  const a=data?.activity?.ended ? null : data?.activity;
+  const link=new URL(window.SIGNUP_PAGE_URL||base+'/');link.searchParams.delete('event');link.searchParams.delete('series');if(data?.publicToken)link.searchParams.set('team',data.publicToken);
+  const eventLink=new URL(link);if(a?.recurrenceId)eventLink.searchParams.set('series',a.recurrenceId);else if(a)eventLink.searchParams.set('event',a.eventId);
   return <section aria-label="多球團報名管理" style={{flex:1,overflowY:'auto',padding:24,color:'#edf4f0'}}><div style={{maxWidth:1000,margin:'0 auto'}}>
-    <h1>報名管理</h1><p>選擇自己的球團與活動，整理名單並預覽公告。</p>
+    <h1>報名管理</h1>
     {error&&<p role="alert" style={{...card,color:'#ffb5b5'}}>{error}<button style={button} onClick={()=>request('GET').then(setData).catch(e=>setError(e.message))}>重新整理</button></p>}
     <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
       <label>我的球團 <select style={style} aria-label="我的球團" value={clubId} disabled={busy} onChange={e=>{setClubId(e.target.value);setEventId('');}}><option value="">請選擇球團</option>{clubs.map(c=><option key={c.clubId} value={c.clubId}>{c.name}</option>)}</select></label>
       <button style={button} disabled={busy} onClick={()=>start('createClub')}>新增球團與首場活動</button>
-      {data&&<label>活動 <select style={style} aria-label="活動" value={eventId} disabled={busy} onChange={e=>setEventId(e.target.value)}><option value="">請選擇活動</option>{data.events.map(e=><option key={e.eventId} value={e.eventId}>{e.eventTime} · {e.ended?'已結束':e.registrationOpen?'開放':'暫停'}</option>)}</select></label>}
+      {data&&<label>活動 <select style={style} aria-label="活動" value={eventId} disabled={busy} onChange={e=>setEventId(e.target.value)}><option value="">{visibleEvents.length?'請選擇活動':'目前沒有未結束的活動'}</option>{visibleEvents.map(e=><option key={e.eventId} value={e.eventId}>{e.eventTime} · {e.ended?'已結束':e.registrationOpen?'開放':'暫停'}</option>)}</select></label>}
       {data&&<button style={button} disabled={busy} onClick={()=>start('createEvent')}>建立新活動</button>}
     </div>
     {!clubs.length&&<p>尚未建立球團，先新增球團與首場活動。</p>}
@@ -61,27 +89,30 @@ function ClubRegistrationAdmin({ onImport }) {
       <article style={card}><h2>{data.name} · {a.eventTime}</h2><p>{a.location} · 名額 {a.totalCapacity} 人 · 剩餘 {data.remaining} 位 · 臨打 {a.guestFee==null?'費用未設定':'$'+a.guestFee}</p><p>{a.frequency==='weekly'?'固定每週自動開團':'單次活動'} · {a.ended?'已結束，停止報名':a.waiting?'等待本系列前場結束或開放日':a.registrationOpen?'開放報名':'暫停報名'}</p>
         <button style={button} disabled={busy} onClick={()=>start('edit')}>編輯本場</button> <button style={button} disabled={busy||a.ended||a.waiting} onClick={()=>change('setOpen',{open:!a.registrationOpen})}>{a.registrationOpen?'暫停報名':'開放報名'}</button>
         {' '}<button style={button} disabled={busy} onClick={()=>onImport({clubId,eventId,publicToken:data.publicToken})}>確認名單並匯入排點</button>
-        <p>本場排點獨立保存。確認匯入後會覆蓋排點名單。</p>
+
       </article>
-      <article style={card}><h2>球友報名連結</h2><p>本場活動：<a href={eventLink.toString()} target="_blank" rel="noopener noreferrer" style={{color:'#8ff3b5',overflowWrap:'anywhere'}}>{eventLink.toString()}</a></p></article>
+      <article style={card}><h2>球友報名連結</h2><p>{a.recurrenceId?'每週固定報名：':'本場活動：'}<a href={eventLink.toString()} target="_blank" rel="noopener noreferrer" style={{color:'#8ff3b5',overflowWrap:'anywhere'}}>{eventLink.toString()}</a></p></article>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18}}>
-        <article style={card}><h2>固定成員</h2>{data.fixed.map(p=><p key={p.name}>{p.name} · {p.onLeave?'請假':'參加'} <button style={button} disabled={busy} onClick={()=>change(p.onLeave?'restoreFixed':'leaveFixed',{name:p.name})}>{p.onLeave?'恢復參加':'請假'}</button></p>)}<p>按姓名辨識；恢復須有空位，仍保留固定價格。</p></article>
+        <article style={card}><h2>固定成員</h2>{data.fixed.map(p=><p key={p.name}>{p.name} · {p.onLeave?'請假':'參加'} <button style={button} disabled={busy} onClick={()=>change(p.onLeave?'restoreFixed':'leaveFixed',{name:p.name})}>{p.onLeave?'恢復參加':'請假'}</button></p>)}</article>
         <article style={card}><h2>臨打名單</h2>{data.guests.map(p=><p key={p.name}>{p.name} <button style={button} disabled={busy} onClick={()=>{if(confirm('取消 '+p.name+' 本場報名？排點資料會保留。'))change('removeGuest',{name:p.name,time:p.time});}}>取消本場報名</button></p>)}<form onSubmit={e=>{e.preventDefault();change('addGuest',{name:guest});}}><label>手動新增臨打<input style={style} required maxLength={40} value={guest} onChange={e=>setGuest(e.target.value)}/></label> <button style={button} disabled={busy}>新增</button></form></article>
       </div>
     </>}
     {data?.series.length>0&&<article style={card}><h2>每週開團系列</h2>{data.series.map(s=><p key={s.id}>{s.anchorDate} 起 · {s.startTime}–{s.endTime} · 提前 {s.leadDays} 天 · {s.enabled?'自動開團中':'已暫停續開'} <button style={button} disabled={busy} onClick={()=>change('setSeries',{seriesId:s.id,enabled:!s.enabled})}>{s.enabled?'暫停續開':'恢復續開'}</button></p>)}<p>暫停續開會保留已建立的活動與報名。</p></article>}
     {window.ISOLATED_CLUB_PREVIEW&&data&&<article style={card}><h2>本機排程測試</h2><p>用虛構時間執行同一套排程，檢查下一場與重跑結果。</p><label>排程檢查時間<input style={style} type="datetime-local" value={checkDate} onInput={e=>setCheckDate(e.target.value)} onChange={e=>setCheckDate(e.target.value)}/></label> <button style={button} disabled={busy} onClick={()=>change('previewAdvance',{now:new Date(checkDate+':00+08:00').getTime()})}>執行模擬排程</button></article>}
+    {data&&<div style={{marginTop:24,marginBottom:24}}><button style={{...button,color:'#ffb5b5',borderColor:'#854747'}} disabled={busy} onClick={()=>setDeleteConfirm(true)}>刪除球團</button></div>}
+    {deleteConfirm&&data&&<div style={{position:'fixed',inset:0,zIndex:230,background:'#000b',display:'flex',alignItems:'center',justifyContent:'center',padding:18}}><section role="dialog" aria-modal="true" aria-label="確認刪除球團" style={{...card,maxWidth:460}}><h2>刪除「{data.name}」？</h2><p>刪除後會從球團清單移除、停止自動開團，原報名連結及 LINE 活動連結也會停止使用。歷史名單與排點資料會保留存檔。</p>{error&&<p role="alert" style={{color:'#ffb5b5'}}>{error}</p>}<button style={{...button,color:'#ffb5b5'}} disabled={busy} onClick={()=>change('deleteClub')}>{busy?'處理中…':'確認刪除球團'}</button> <button style={button} disabled={busy} onClick={()=>setDeleteConfirm(false)}>取消</button></section></div>}
     {form&&<div style={{position:'fixed',inset:0,zIndex:205,background:'#000b',display:'flex',alignItems:'center',justifyContent:'center',padding:18}}><form role="dialog" aria-label={form.mode==='createClub'?'新增球團':form.mode==='edit'?'編輯本場活動':'建立新活動'} style={{...card,width:560,maxHeight:'85vh',overflowY:'auto'}} onSubmit={e=>{e.preventDefault();change(form.mode,{fields:{...form,totalCapacity:Number(form.totalCapacity),guestFee:form.guestFee===''?null:Number(form.guestFee),fixedFee:form.fixedFee===''?null:Number(form.fixedFee),courtCount:Number(form.courtCount),leadDays:Number(form.leadDays),fixedMembers:form.fixedNames.split(/[,，\n]/).map(s=>s.trim()).filter(Boolean)}});}}>
       <h2>{form.mode==='createClub'?'新增球團與首場活動':form.mode==='edit'?'編輯本場活動':'建立新活動'}</h2><div style={{display:'grid',gap:14}}>
         {form.mode==='createClub'&&<><label>球團名稱<input style={style} required maxLength={60} value={form.name} onChange={e=>field('name',e.target.value)}/></label><label>固定成員（每行一位）<textarea style={style} rows={3} value={form.fixedNames} onChange={e=>field('fixedNames',e.target.value)}/></label></>}
         {form.mode==='createEvent'&&<label>固定成員（每行一位）<textarea style={style} rows={4} value={form.fixedNames} onChange={e=>field('fixedNames',e.target.value)}/></label>}
-        <label>活動日期<input style={style} type="date" required value={form.date} onInput={e=>field('date',e.target.value)} onChange={e=>field('date',e.target.value)}/></label>
+        <label>活動日期<input style={style} type="date" required min={form.mode==='edit'?undefined:todayTaiwan} value={form.date} onInput={e=>field('date',e.target.value)} onChange={e=>field('date',e.target.value)}/></label>
         {['startTime','endTime'].map((key,i)=><label key={key}>{i?'結束時間':'開始時間'}<input style={style} type="time" required value={form[key]} onInput={e=>field(key,e.target.value)} onChange={e=>field(key,e.target.value)}/></label>)}
+        {pastStart&&<p role="alert" style={{color:'#ffb5b5',margin:0}}>活動開始時間已經過去，請選擇未來的日期與時間。</p>}
         <label>場地<input style={style} required maxLength={120} value={form.location} onChange={e=>field('location',e.target.value)}/></label>
         {[['totalCapacity','總名額',1,200],['guestFee','臨打費用',0,100000],['fixedFee','固定球友計費基準',0,100000],['courtCount','場地數',1,20]].map(([key,label,min,max])=><label key={key}>{label}{key.includes('Fee')?'（選填）':''}<input style={style} type="number" required={!key.includes('Fee')} min={min} max={max} step={key.includes('Fee')?'0.01':'1'} value={form[key]} onChange={e=>field(key,e.target.value)}/></label>)}
         <label>用球（選填）<input style={style} maxLength={100} value={form.shuttlecock} onChange={e=>field('shuttlecock',e.target.value)}/></label><label>公告補充文字（選填）<textarea style={style} rows={3} maxLength={600} value={form.message} onChange={e=>field('message',e.target.value)}/></label>
         {form.mode!=='edit'&&<><label>開團頻率<select style={style} value={form.frequency} onChange={e=>field('frequency',e.target.value)}><option value="once">單次</option><option value="weekly">固定每週</option></select></label>{form.frequency==='weekly'&&<><label>提前幾天開放下一場<input style={style} type="number" min={0} max={28} required value={form.leadDays} onChange={e=>field('leadDays',e.target.value)}/></label><p>建立一個每週系列；前場結束且到提前開放日後，自動建立下一場，不發 LINE 推播。</p></>}</>}
-      </div><p>{form.mode==='createClub'?'本次資料會成為球團預設。':'本次修改只影響這一場，不改球團預設或其他場次。'}</p>{error&&<p role="alert">{error}</p>}<button style={button} disabled={busy}>{form.mode==='edit'?'儲存本場':'建立並開放報名'}</button> <button style={button} type="button" disabled={busy} onClick={()=>setForm(null)}>返回</button>
+      </div><p>{form.mode==='createClub'?'本次資料會成為球團預設。':'本次修改只影響這一場，不改球團預設或其他場次。'}</p>{error&&<p role="alert">{error}</p>}<button style={button} disabled={busy||pastStart}>{form.mode==='edit'?'儲存本場':'建立並開放報名'}</button> <button style={button} type="button" disabled={busy} onClick={()=>setForm(null)}>返回</button>
     </form></div>}
   </div></section>;
 }

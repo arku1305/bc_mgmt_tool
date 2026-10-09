@@ -11,12 +11,12 @@ async function shareToken(db, teamId) {
   await db.ref(`publicTeamsV1/${token}`).set(teamId);
   return token;
 }
-async function publicPaths(db, token, eventId) {
+async function publicPaths(db, token, eventId, seriesId) {
   if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return null;
   const id = (await db.ref(`publicTeamsV1/${token}`).once('value')).val();
   if (id?.model === 2) {
     if (process.env.REGISTRATION_V2 !== 'true') return null;
-    return require('./club-service').publicScope(db, id, eventId);
+    return require('./club-service').publicScope(db, id, eventId, seriesId);
   }
   return id ? paths(id) : null;
 }

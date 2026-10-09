@@ -332,7 +332,9 @@
   const API_URL = window.location.origin;
   let requestedEvent = new URLSearchParams(location.search).get('event') || '';
   const teamToken = new URLSearchParams(location.search).get('team') || '';
+  const seriesId = new URLSearchParams(location.search).get('series') || '';
   let loadedEvent = null;
+  let eventChanged = false;
   // ======================================================
 
   let currentSlots = 0;
@@ -341,9 +343,21 @@
 
   async function fetchStatus() {
     try {
-      const res = await fetch(`${API_URL}/api/status?event=${encodeURIComponent(requestedEvent)}&team=${encodeURIComponent(teamToken)}`, { cache: 'no-store' });
+      const res = await fetch(`${API_URL}/api/status?event=${encodeURIComponent(requestedEvent)}&team=${encodeURIComponent(teamToken)}&series=${encodeURIComponent(seriesId)}`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok || !data) throw new Error('讀取失敗');
+      if (seriesId && loadedEvent && data.eventId !== loadedEvent) {
+        eventChanged = true;
+        document.getElementById('form-signup').style.display = 'none';
+        document.getElementById('form-cancel').style.display = 'none';
+        document.getElementById('form-tabs').style.display = 'none';
+        showMsg('活動已換場，請重新確認日期後再報名。', 'error');
+        if (!document.getElementById('refresh-event')) {
+          const button = document.createElement('button'); button.id = 'refresh-event'; button.className = 'btn btn-primary'; button.textContent = '重新載入並確認活動'; button.onclick = () => location.reload(); document.getElementById('msg').after(button);
+        }
+        return;
+      }
+      if (eventChanged) return;
       if (data.activities) {
         let choices = document.getElementById('activity-choices');
         if (!choices) { choices = document.createElement('div'); choices.id = 'activity-choices'; document.getElementById('event-time').parentElement.after(choices); }
@@ -360,7 +374,7 @@
       document.getElementById('team-name').textContent = data.teamName || '球團報名';
       document.getElementById('event-location').textContent = data.location || '—';
       document.getElementById('event-fee').textContent = data.guestFee == null ? '—' : '$' + data.guestFee + ' / 人';
-      document.getElementById('event-status').textContent = data.stale ? '請使用新的活動連結' : !loadedEvent ? '尚未開團' : data.registrationOpen ? '開放報名' : '暫停報名';
+      document.getElementById('event-status').textContent = data.stale ? '請使用新的活動連結' : !loadedEvent ? (seriesId?'目前尚未開放報名':'尚未開團') : data.registrationOpen ? '開放報名' : '暫停報名';
 
       // 更新時間
       if (data.eventTime) {
@@ -378,7 +392,7 @@
       const subEl = document.getElementById('slots-sub');
       numEl.textContent = isFull ? '0' : currentSlots;
       numEl.className = 'slots-number' + (isFull ? ' full' : '');
-      subEl.textContent = !loadedEvent ? (data.stale ? '活動已換場，請使用團長提供的新連結' : '尚未開團，請等團長建立活動') : !data.registrationOpen ? '目前暫停報名' : isFull ? '名額已滿' : `共 ${maxSlots} 個臨打名額，已報名 ${taken} 人`;
+      subEl.textContent = !loadedEvent ? (data.stale ? '活動已換場，請使用團長提供的新連結' : (seriesId?'目前尚未開放報名':'尚未開團，請等團長建立活動')) : !data.registrationOpen ? '目前暫停報名' : isFull ? '名額已滿' : `共 ${maxSlots} 個臨打名額，已報名 ${taken} 人`;
 
       // 額滿時隱藏報名表單
       document.getElementById('full-banner').className = 'full-banner' + (loadedEvent && isFull ? ' show' : '');
@@ -389,7 +403,7 @@
       if ((!data.registrationOpen || isFull) && loadedEvent && currentTab === 'signup') switchTab('cancel');
 
     } catch (e) {
-      loadedEvent = null; document.getElementById('slots-sub').textContent = '無法讀取活動，請重新整理'; document.getElementById('form-signup').style.display = 'none'; document.getElementById('form-cancel').style.display = 'none';
+      if (!seriesId) loadedEvent = null; document.getElementById('slots-sub').textContent = '無法讀取活動，請重新整理'; document.getElementById('form-signup').style.display = 'none'; document.getElementById('form-cancel').style.display = 'none';
     }
   }
 
@@ -419,18 +433,20 @@
   }
 
   async function doSignup() {
+    if (eventChanged || !loadedEvent) { showMsg('請重新載入並確認活動日期。','error'); return; }
     const name = document.getElementById('signup-name').value.trim();
     const phone = document.getElementById('signup-phone').value.trim();
     if (!name) { showMsg('請輸入姓名', 'error'); return; }
     if (!/^09\d{8}$/.test(phone)) { showMsg('請輸入正確的手機號碼（09xxxxxxxx）', 'error'); return; }
     if (isFull) { showMsg('名額已滿，無法報名', 'error'); return; }
 
+    if (!confirm('確認報名：' + document.getElementById('event-time').textContent + '？')) return;
     setLoading('signup-btn', true, '確認報名');
     try {
       const res = await fetch(`${API_URL}/api/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken })
+        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken, series: seriesId })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -440,6 +456,7 @@
         fetchStatus();
       } else {
         showMsg(data.message || '報名失敗，請稍後再試', 'error');
+        if (seriesId) fetchStatus();
       }
     } catch (e) {
       showMsg('網路錯誤，請稍後再試', 'error');
@@ -448,6 +465,7 @@
   }
 
   async function doCancel() {
+    if (eventChanged || !loadedEvent) { showMsg('請重新載入並確認活動日期。','error'); return; }
     const name = document.getElementById('cancel-name').value.trim();
     const phone = document.getElementById('cancel-phone').value.trim();
     if (!name) { showMsg('請輸入姓名', 'error'); return; }
@@ -458,7 +476,7 @@
       const res = await fetch(`${API_URL}/api/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken })
+        body: JSON.stringify({ name, phone, eventId: loadedEvent, team: teamToken, series: seriesId })
       });
       const data = await res.json();
       if (res.ok && data.success) {

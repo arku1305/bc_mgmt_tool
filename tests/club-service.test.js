@@ -4,7 +4,8 @@ const fields={name:'測試甲團',date:'2026-10-06',startTime:'20:00',endTime:'2
 function fixture(coldCache=false){
  const store={}, writes=[],listeners=new Set();
  const db={ref(location){const parts=location.split('/');const read=()=>parts.reduce((v,k)=>v?.[k],store)??null;const put=value=>{const check=v=>{if(v===undefined)throw new Error('Firebase 不接受 undefined');if(v&&typeof v==='object')Object.values(v).forEach(check);};check(value);let p=store;for(const key of parts.slice(0,-1))p=p[key]||=( {} );p[parts.at(-1)]=JSON.parse(JSON.stringify(value));writes.push(location);};return{on:()=>listeners.add(location),off:()=>listeners.delete(location),once:async()=>({val:read}),set:async value=>put(value),transaction:async fn=>{const next=fn(coldCache&&!listeners.has(location)?null:read());if(next!==undefined)put(next);return{committed:next!==undefined,snapshot:{val:read}};}};}};
- const module={exports:{}};vm.runInNewContext(fs.readFileSync('報名機器人/lib/club-service.js','utf8'),{module,Date,process:{env:{}},require:name=>name.startsWith('.')?require(path.resolve('報名機器人/lib',name)):require(name)});
+ class FixtureDate extends Date {static now(){return Date.parse('2026-10-03T12:00:00+08:00');}}
+ const module={exports:{}};vm.runInNewContext(fs.readFileSync('報名機器人/lib/club-service.js','utf8'),{module,Date:FixtureDate,process:{env:{}},require:name=>name.startsWith('.')?require(path.resolve('報名機器人/lib',name)):require(name)});
  async function call(user,query={},body){const result={status:200};const res={status(n){result.status=n;return this;},json(value){result.body=value;},end(){}};await module.exports.service({method:body?'POST':'GET',query,body},res,db,user);return result;}
  return{store,writes,db,call,...module.exports};
 }
@@ -86,4 +87,43 @@ test('費用未填且Firebase未存空值時，名單仍能確認並保存交接
  assert.equal(write.result.status,200);assert.equal(write.result.body.event.guestFee,null);assert.equal(write.result.body.event.fixedFee,null);
  assert.equal(write.result.body.roster.length,1);assert.ok(f.store.rosterHandoffsV2[first.clubId][first.selectedEventId][read.result.body.fingerprint]);
  assert.equal(f.store.eventSchedulesV2,undefined);
+});
+
+test('團長可刪除本人球團；移出清單並停用報名、排程及私有操作，歷史保留',async()=>{
+ const f=fixture(true),user={uid:'leader'};
+ const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',leadDays:3}})).body;
+ const original=f.store.clubsV2[first.clubId],eventId=first.selectedEventId;
+ const query={club:first.clubId,event:eventId};
+ assert.equal((await f.call({uid:'admin'},query,{action:'deleteClub',expectedRevision:first.revision})).status,403);
+ assert.equal((await f.call(user,query,{action:'deleteClub',expectedRevision:'stale'})).status,409);
+ const result=await f.call(user,query,{action:'deleteClub',expectedRevision:first.revision});assert.equal(result.status,200);assert.equal(result.body.deleted,true);
+ assert.equal((await f.call(user)).body.clubs.length,0);assert.equal((await f.call(user,query)).status,403);
+ const saved=f.store.clubsV2[first.clubId];assert.ok(saved.deletedAt);assert.equal(saved.events[eventId].registrationOpen,false);assert.deepEqual(saved.events[eventId].fixedMembers,original.events[eventId].fixedMembers);
+ assert(Object.values(saved.series).every(s=>!s.enabled));assert.equal(require('../報名機器人/lib/club-model').advance(saved,Date.now()+14*86400000).created,0);
+ assert.equal(await f.publicScope(f.db,{clubId:first.clubId},eventId),null);
+ assert.equal(require('../報名機器人/lib/activity-time').current(saved,saved.events[eventId]),false);
+ assert.equal((await f.call(user,query,{action:'createEvent',expectedRevision:core.digest(saved),fields})).status,403);
+});
+
+test('每週固定入口換場後沿用同一系列，舊提交不會寫到新場，單次與其他系列隔離',async()=>{
+ const f=fixture(),user={uid:'leader'};
+ const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',leadDays:7}})).body;
+ const club=f.store.clubsV2[first.clubId],series=first.selectedEventId;
+ let now=Date.parse('2026-10-06T12:00:00+08:00');
+ const time=require('../報名機器人/lib/activity-time');
+ const module={exports:{}};vm.runInNewContext(fs.readFileSync('報名機器人/lib/club-service.js','utf8'),{module,Date,process:{env:{}},require:name=>name==='./activity-time'?{ended:e=>time.ended(e,now),current:(c,e)=>time.current(c,e,now),available:(c,e)=>time.available(c,e,now)}:name.startsWith('.')?require(path.resolve('報名機器人/lib',name)):require(name)});
+ const scope=()=>module.exports.publicScope(f.db,{clubId:club.clubId},null,series);
+ club.events['other-once']={...club.events[series],activityId:'other-once',recurrenceId:null};
+ club.series['other-series']={...club.series[series]};club.events['other-weekly']={...club.events[series],activityId:'other-weekly',recurrenceId:'other-series'};
+ const oldPath=(await scope()).registration;assert.ok(oldPath.endsWith(series));
+ now=Date.parse('2026-10-07T12:00:00+08:00');assert.equal((await scope()).pendingSeries,true);
+ const advanced=require('../報名機器人/lib/club-model').advance(club,now).club;f.store.clubsV2[club.clubId]=advanced;
+ const next=Object.values(advanced.events).find(e=>e.activityId!==series&&e.recurrenceId===series);assert.ok(next);
+ assert.ok((await scope()).registration.endsWith(next.activityId));
+ assert.equal((await module.exports.publicScope(f.db,{clubId:club.clubId},series,series)).pendingSeries,true);
+ next.registrationOpen=false;assert.equal((await scope()).registrationAllowed,false);
+ assert.equal(await module.exports.publicScope(f.db,{clubId:club.clubId},null,'constructor'),null);
+ next.eventDate='2026-10-01';assert.equal((await scope()).pendingSeries,true);
+ assert.ok((await module.exports.publicScope(f.db,{clubId:club.clubId},series)).registration.endsWith(series));
+ assert.equal(Object.keys(advanced.events[series].walkIns).length,0);
 });

@@ -7,7 +7,7 @@ const validClub = id => typeof id === 'string' && /^club-[a-f0-9-]{36}$/.test(id
 async function ownedClub(db, user, id) {
   if (!validClub(id)) return null;
   const club = (await db.ref('clubsV2/' + id).once('value')).val();
-  return club?.ownerUid === user.uid ? club : null;
+  return club?.ownerUid === user.uid && !club.deletedAt ? club : null;
 }
 function view(club, eventId) {
   const events = Object.values(club.events || {}).sort((a,b) => b.eventDate.localeCompare(a.eventDate));
@@ -19,7 +19,7 @@ function view(club, eventId) {
     defaults: club.defaults, selectedEventId: session?.activityId || '',
     ...(session ? { ...core.adminView({ team: club.defaults, current: session }), revision: core.digest(club),
       activity: { ...core.publicActivity(session), date: session.eventDate, startTime: session.startTime, endTime: session.endTime,
-        waiting:!require('./activity-time').current(club,stored), fixedFee: session.fixedFee, courtCount: session.courtCount, shuttlecock: session.shuttlecock, message: session.message, frequency: session.frequency }, announcement: render(session) } : {}) };
+        waiting:!require('./activity-time').current(club,stored), fixedFee: session.fixedFee, courtCount: session.courtCount, shuttlecock: session.shuttlecock, message: session.message, frequency: session.frequency, recurrenceId: session.recurrenceId || null }, announcement: render(session) } : {}) };
 }
 async function service(req, res, db, user) {
   if (!['GET','POST'].includes(req.method)) return res.status(405).end();
@@ -40,7 +40,7 @@ async function service(req, res, db, user) {
   let error;
   const result = await cachedTransaction(ref, value => {
     error = null;
-    if (!create && (value?.ownerUid !== user.uid || core.digest(value) !== req.body.expectedRevision)) return;
+    if (!create && (value?.ownerUid !== user.uid || value.deletedAt || core.digest(value) !== req.body.expectedRevision)) return;
     try {
       if (req.body.action === 'previewAdvance') {
         if (process.env.ISOLATED_CLUB_PREVIEW !== 'true' || !Number.isFinite(req.body.now)) throw new Error('模擬排程僅限本機測試');
@@ -52,16 +52,24 @@ async function service(req, res, db, user) {
   });
   if (!result.committed) return res.status(error ? 422 : 409).json({message:error || '本次操作未完成：活動名單已被其他操作變更，請重新載入後再試。'});
   const saved = result.snapshot.val();
+  if (req.body.action === 'deleteClub') return res.json({ deleted: true, clubId: id });
   if (create) {
     await db.ref('userClubsV2/' + user.uid + '/' + id).set(true);
     await db.ref('publicTeamsV1/' + saved.publicToken).set({ model:2,clubId:id });
   }
   return res.json(view(saved, ['createClub','createEvent'].includes(req.body.action) ? context.eventId : req.body.eventId));
 }
-async function publicScope(db, value, eventId) {
+async function publicScope(db, value, eventId, seriesId) {
   if (!validClub(value.clubId)) return null;
   const club = (await db.ref('clubsV2/' + value.clubId).once('value')).val();
-  if (!club) return null;
+  if (!club || club.deletedAt) return null;
+  if (seriesId) {
+    if (typeof seriesId !== 'string' || !Object.hasOwn(club.series || {}, seriesId)) return null;
+    const time = require('./activity-time');
+    const current = Object.values(club.events || {}).find(e => e.recurrenceId === seriesId && !time.ended(e) && time.current(club,e));
+    if (!current || (eventId && eventId !== current.activityId)) return { model:2, pendingSeries:true, registrationAllowed:false };
+    eventId = current.activityId;
+  }
   if (!eventId) return { model:2, clubId:club.clubId, activities:Object.values(club.events || {}).filter(e=>!require('./activity-time').ended(e)).map(e=>core.publicActivity({...e,registrationOpen:require('./activity-time').available(club,e)})) };
   if (!Object.hasOwn(club.events || {}, eventId)) return null;
   return { model:2, registrationAllowed:require('./activity-time').available(club,club.events[eventId]), registration:'clubsV2/' + club.clubId + '/events/' + eventId, ranking:'eventSchedulesV2/' + club.clubId + '/' + eventId, directSession:true };

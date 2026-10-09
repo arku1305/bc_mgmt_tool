@@ -5,6 +5,7 @@ function ended(session,now=Date.now()) {
 function open(session,now=Date.now()) {return !!session?.activityId && session.registrationOpen!==false && !ended(session,now);}
 module.exports={ended,open};
 function current(club,session,now=Date.now()) {
+  if (!club || club.deletedAt) return false;
   if(!session?.recurrenceId)return true;
   const series=club.series?.[session.recurrenceId];
   if(series&&session.eventDate!==series.anchorDate){const opens=Date.parse(session.eventDate+'T09:00:00+08:00')-(series.leadDays||0)*86400000;if(now<opens)return false;}

@@ -137,7 +137,7 @@ async function handleEvent(db,event,transport,now=Date.now()) {
   const eventKey=hash(commandId);let claimed=false;
   await transact(db,s=>{claimed=false;const p=s.publications[publication.key];if(s.processed[eventKey])return s;if(!p?.active||!membership(s,user.uid,groupKey))throw new Error('發布權限已更新');s.processed[eventKey]={at:now,status:'sending',publicationKey:p.key};p.status='sending';p.attempt=eventKey;claimed=true;return s;});
   if(!claimed)return true;
-  const url=new URL(process.env.SIGNUP_PAGE_URL||'https://badminton-signup-bot.vercel.app/');url.searchParams.set('team',club.publicToken);url.searchParams.set('event',session.activityId);
+  const url=new URL(process.env.SIGNUP_PAGE_URL||'https://badminton-signup-bot.vercel.app/');url.searchParams.set('team',club.publicToken);url.searchParams.delete('event');url.searchParams.delete('series');url.searchParams.set(session.recurrenceId?'series':'event',session.recurrenceId||session.activityId);
   try{
     await transport.reply(event.replyToken,textMessages(render(session)+'\n\n本場報名：'+url.toString()));
     await transact(db,s=>{s.processed[eventKey].status='sent';const p=s.publications[publication.key];if(p.attempt===eventKey){p.status='sent';p.deliveredAt=now;}return s;});

@@ -18,6 +18,8 @@ function stamp(session) {
 function buildEvent(club, input, context) {
   const fields = { ...club.defaults, ...input, name: club.name, intervalWeeks: 1 };
   const team = core.teamFields(fields);
+  const startsAt = Date.parse(team.eventDate + 'T' + team.startTime + ':00+08:00');
+  if (startsAt <= context.now) throw new Error('活動開始時間已經過去，請選擇未來的日期與時間。');
   const session = core.mutate({}, { action: 'setupTeam', fields }, context).current;
   return { ...session, ...extras(fields), clubId: club.clubId, frequency: team.recurrence.frequency, leadDays: team.recurrence.leadDays };
 }
@@ -30,7 +32,13 @@ function apply(club, command, context) {
       defaults: { ...defaults, ...extras(command.fields), frequency: defaults.recurrence.frequency, intervalWeeks: 1, leadDays: defaults.recurrence.leadDays }, events: {}, series: {}, createdAt: context.now };
     return addEvent(created, command.fields, context);
   }
-  if (!club || club.ownerUid !== context.uid) throw new Error('無法管理此球團');
+  if (!club || club.deletedAt || club.ownerUid !== context.uid) throw new Error('無法管理此球團');
+  if (command.action === 'deleteClub') {
+    next.deletedAt = context.now; next.deletedBy = context.uid;
+    Object.values(next.series || {}).forEach(series => { series.enabled = false; });
+    Object.values(next.events || {}).forEach(event => { event.registrationOpen = false; });
+    return next;
+  }
   if (command.action === 'createEvent') return addEvent(next, command.fields || {}, context);
   if (command.action === 'setSeries') {
     if (!next.series?.[command.seriesId] || typeof command.enabled !== 'boolean') throw new Error('找不到週期系列');
@@ -68,6 +76,7 @@ function addEvent(club, fields, context) {
 }
 function advance(club, now) {
   const next = expire(clone(club),now); let count = 0;
+  if (!next || next.deletedAt) return { club: next, created: 0 };
   for (const [seriesId, series] of Object.entries(next.series || {})) {
     if (!series.enabled) continue;
     if (Object.values(next.events||{}).some(e=>e.recurrenceId===seriesId && require('./activity-time').open(e,now))) continue;

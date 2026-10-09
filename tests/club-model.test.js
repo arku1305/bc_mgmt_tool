@@ -84,3 +84,15 @@ test('新活動固定名單可修改、清空；省略沿用預設，不覆寫�
  assert.throws(()=>add({fixedMembers:['固定乙','固定乙']},'duplicate'));
  assert.throws(()=>add({fixedMembers:['甲','乙','丙','丁','戊']},'overfull'));
 });
+
+test('新球團首場與新活動拒絕過去日期、今日已開始及剛好現在；台灣未來時段可建立',()=>{
+ const now=Date.parse('2026-10-09T15:00:00+08:00'),ctx={...context,now};
+ for(const input of [{date:'2026-10-08',startTime:'20:00',endTime:'22:00'},{date:'2026-10-09',startTime:'14:00',endTime:'16:00'},{date:'2026-10-09',startTime:'15:00',endTime:'16:00'}]){
+  assert.throws(()=>model.apply(null,{action:'createClub',fields:{...fields,...input}},ctx),/活動開始時間已經過去/);
+  assert.throws(()=>model.apply(create(),{action:'createEvent',fields:{...fields,...input}},ctx),/活動開始時間已經過去/);
+ }
+ const future={...fields,date:'2026-10-09',startTime:'16:00',endTime:'18:00'};
+ assert.equal(model.apply(null,{action:'createClub',fields:future},ctx).events[ctx.eventId].startTime,'16:00');
+ const midnight={...future,date:'2026-10-10',startTime:'00:15',endTime:'01:15'};
+ assert.equal(model.apply(null,{action:'createClub',fields:midnight},{...ctx,now:Date.parse('2026-10-09T23:59:00+08:00')}).events[ctx.eventId].eventDate,'2026-10-10');
+});

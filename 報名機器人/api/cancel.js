@@ -8,8 +8,9 @@ module.exports = async (req, res) => {
   try {
     let message;
     const now = Date.now();
-    const scope = await publicPaths(db, req.body?.team, req.body?.eventId);
+    const scope = await publicPaths(db, req.body?.team, req.body?.eventId, req.body?.series);
     if (!scope) return res.status(400).json({ success: false, message: '請使用團長提供的球團報名連結' });
+    if (scope.pendingSeries) return res.status(409).json({success:false,message:'活動已換場或尚未開放，請重新整理並確認活動日期。'});
     if (!scope.registration) return res.status(400).json({ success: false, message: '請先選擇活動' });
     const ref = db.ref(scope.registration + (scope.directSession ? '' : '/current'));
     await ref.once('value');

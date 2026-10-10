@@ -773,7 +773,7 @@ window.Court = Court;
 // ════════════════════════════════════════════════════════════════════════════
 
 // 頂部列
-function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo }) {
+function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo, onAccountingImport, accountingBusy, accountingEmpty }) {
   const isAdmin = role === 'admin';
   const dot = <span style={{ color: 'var(--dim)', fontSize: 11, padding: '0 4px' }}>·</span>;
   const fieldStyle = {
@@ -788,7 +788,7 @@ function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo })
       padding: '12px 18px',
       borderBottom: '1px solid var(--line)',
       background: theme === 'minimal' ? 'transparent' : 'rgba(0,0,0,0.2)',
-      gap: 14, flexShrink: 0,
+      gap: 14, flexShrink: 0, flexWrap: 'wrap',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{
@@ -824,7 +824,8 @@ function TopBar({ theme, accent, onReset, onShowQR, onLogout, role, eventInfo })
       </div>
 
       {isAdmin && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {onAccountingImport&&<button onClick={onAccountingImport} disabled={accountingBusy||accountingEmpty} style={{background:'#223e30',border:'1px solid #45624c',color:accent,padding:'7px 14px',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>{accountingBusy?'正在讀取…':'匯入帳務'}</button>}
           <button
             onClick={onReset}
             style={{
@@ -2313,6 +2314,11 @@ var PRIVATE_RANKING_URL = (window.ROSTER_API_URL || 'https://badminton-signup-bo
 function rankingUrl(path) { var scope = window.__RANKING_SCOPE__; return PRIVATE_RANKING_URL + '&path=' + encodeURIComponent(path || '') + (scope ? '&club=' + encodeURIComponent(scope.clubId) + '&event=' + encodeURIComponent(scope.eventId) : ''); }
 var PUBLIC_SCHEDULE_URL = (window.ROSTER_API_URL || 'https://badminton-signup-bot.vercel.app').replace(/\/$/, '') + '/api/ranking-view';
 
+var rankingRequests = new Map();
+function rankingRequestState(url) {
+  if (!rankingRequests.has(url)) rankingRequests.set(url,{version:0,pending:0,read:0,tail:Promise.resolve()});
+  return rankingRequests.get(url);
+}
 function fbGet(path) {
   // 球友僅能取得伺服器明確允許的公開欄位，沒有付款或訊息資料。
   if (RANKING_PLAYER_VIEW) {
@@ -2324,8 +2330,11 @@ function fbGet(path) {
   // 管理端讀取私有資料。
   var token = window.__AUTH_TOKEN__;
   var url = rankingUrl(path);
+  var state = rankingRequestState(url), version = state.version, read = ++state.read;
+  if (state.pending) return Promise.resolve(null);
   return fetch(url, { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
     .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) { return !state.pending && version === state.version && read === state.read ? data : null; })
     .catch(function() { return null; });
 }
 
@@ -2334,11 +2343,14 @@ function fbPut(path, data) {
   var token = window.__AUTH_TOKEN__;
   if (RANKING_PLAYER_VIEW || !token) return Promise.resolve(false);
   var url = rankingUrl(path);
-  return fetch(url, {
+  var state = rankingRequestState(url);
+  state.version++; state.pending++;
+  var body = JSON.stringify(data);
+  var operation = state.tail.then(function() { return fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify(data),
-  }).then(function(response) {
+    body: body,
+  }); }).then(function(response) {
     if (!response.ok) throw new Error('寫入失敗');
     return true;
   }).catch(function() {
@@ -2348,7 +2360,9 @@ function fbPut(path, data) {
       setTimeout(function() { window.__WRITE_ERROR_SHOWN__ = false; }, 5000);
     }
     return false;
-  });
+  }).finally(function() { state.pending--; });
+  state.tail = operation;
+  return operation;
 }
 
 function loadData()           { return fbGet(''); }
@@ -2578,7 +2592,7 @@ function App() {
   // ── 認證狀態：完全交給 Firebase Auth，不再自行用 localStorage 記錄 ─────
   const [authenticated, setAuthenticated] = React.useState(false);
   const [authReady, setAuthReady] = React.useState(false);
-  const [moduleAccess, setModuleAccess] = React.useState({ registration: true, ranking: true });
+  const [moduleAccess, setModuleAccess] = React.useState({ registration: true, ranking: true, accounting: true });
   const [platformRole, setPlatformRole] = React.useState('organizer');
   const [share, setShare] = React.useState('');
   const [rankingScope, setRankingScope] = React.useState(null);
@@ -2598,7 +2612,7 @@ function App() {
         if (!response.ok) throw new Error(RankingAuthAccess.errorMessage(response.status));
         const access = await response.json();
         if (!active || request !== generation || firebase.auth().currentUser !== user) return;
-        setModuleAccess(access.modules || { registration: true, ranking: true }); setPlatformRole(access.role);
+        setModuleAccess(access.modules || { registration: true, ranking: true, accounting: true }); setPlatformRole(access.role);
         var savedScope = null;
         if (window.REGISTRATION_V2) { try { savedScope = JSON.parse(sessionStorage.getItem('rankingScope:' + user.uid) || 'null'); } catch (_) {} }
         window.__RANKING_SCOPE__ = savedScope; setRankingScope(savedScope); setShare(savedScope ? savedScope.publicToken : access.publicToken || '');
@@ -2631,7 +2645,7 @@ function App() {
         }
         if (access) {
           window.__AUTH_TOKEN__ = token;
-          setModuleAccess(access.modules || { registration: true, ranking: true });
+          setModuleAccess(access.modules || { registration: true, ranking: true, accounting: true });
           setPlatformRole(access.role);
         }
       } catch (_) {} finally { inFlight = false; }
@@ -2658,15 +2672,22 @@ function App() {
   }, []);
 
   const isAdmin = role === 'admin';
-  const [managementView, setManagementView] = React.useState(new URLSearchParams(window.location.search).get('view') === 'ranking' ? 'ranking' : 'registration');
+  const [accountingSource,setAccountingSource] = React.useState(null);
+  const [accountingNotice,setAccountingNotice] = React.useState('');
+  const [accountingImportBusy,setAccountingImportBusy] = React.useState(false);
+  const [managementView, setManagementView] = React.useState(() => { const view = new URLSearchParams(window.location.search).get('view'); return ['ranking', 'accounting'].includes(view) ? view : 'registration'; });
   const showLock = isAdmin && authReady && !authenticated;
   React.useEffect(() => {
     if (moduleAccess[managementView] === false || (managementView === 'permissions' && platformRole !== 'platformAdmin')) {
-      const next = ['registration', 'ranking'].find(v => moduleAccess[v] !== false);
+      const next = ['registration', 'ranking', 'accounting'].find(v => moduleAccess[v] !== false);
       if (next) setManagementView(next);
       else if (platformRole === 'platformAdmin') setManagementView('permissions');
     }
-  }, [moduleAccess.registration, moduleAccess.ranking, platformRole, managementView]);
+  }, [moduleAccess.registration, moduleAccess.ranking, moduleAccess.accounting, platformRole, managementView]);
+
+  React.useEffect(()=>{
+    if(moduleAccess.accounting===false||(accountingSource&&moduleAccess[accountingSource.kind]===false))setAccountingSource(null);
+  },[moduleAccess.accounting,moduleAccess.registration,moduleAccess.ranking,accountingSource]);
 
   // ── 內部工具：將 courts 陣列轉成 match 物件，呼叫三個儲存函式 ────────────
   function saveToStorage(pList, cList, rNums) {
@@ -3346,16 +3367,35 @@ function App() {
     );
   }
 
-  const managementNav = isAdmin && <ManagementMenu role={platformRole} access={moduleAccess} view={managementView} onSelect={setManagementView} onLogout={handleLogout} />;
+  const managementNav = isAdmin && <ManagementMenu role={platformRole} access={moduleAccess} view={managementView} onSelect={view=>{setAccountingNotice('');setManagementView(view);}} onLogout={handleLogout} />;
+  const accountingFeedback = accountingNotice&&<div role="status" style={{padding:'10px 18px',background:'#233e2d',color:'#b9f4d1',fontSize:14,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>{accountingNotice}<button style={{border:0,background:'transparent',color:'#b9f4d1',textDecoration:'underline',cursor:'pointer'}} onClick={()=>{setAccountingNotice('');setManagementView('accounting');}}>查看帳務</button><button aria-label="關閉入帳提示" style={{marginLeft:'auto',border:0,background:'transparent',color:'#b9f4d1',cursor:'pointer'}} onClick={()=>setAccountingNotice('')}>✕</button></div>;
+  function openAccounting(source){setAccountingNotice('');setAccountingSource(source);}
+  const accountingModal = isAdmin&&accountingSource&&moduleAccess.accounting!==false&&moduleAccess[accountingSource.kind]!==false&&<AccountingImportDialog source={accountingSource} onClose={()=>setAccountingSource(null)} onSaved={()=>{setAccountingSource(null);setAccountingNotice('本次收入已匯入帳務。');}}/>;
+  async function openRankingAccounting(){
+    setAccountingImportBusy(true);
+    const scope=rankingScope, binding=eventIntegration;
+    try{
+      const rootUrl=rankingUrl('');
+      const current=new URL(rootUrl);
+      const pending=Array.from(rankingRequests.entries()).filter(([url])=>{const parsed=new URL(url);return parsed.searchParams.get('club')===current.searchParams.get('club')&&parsed.searchParams.get('event')===current.searchParams.get('event');}).map(([,state])=>state.tail);
+      const results=await Promise.all(pending);
+      if(results.some(result=>result===false)){alert('排點儲存尚未成功，請先確認排點資料後再匯入帳務。');return;}
+      if(window.__RANKING_SCOPE__!==scope)return;
+      openAccounting(AccountingView.rankingSource(scope,binding));
+    }finally{setAccountingImportBusy(false);}
+  }
   function appliedRegistration(list, binding, switched) {
+    setAccountingNotice('');
     if (switched) { setCourts(EMPTY_COURTS); setRoundNumbers([1, 1]); }
     setPlayers(list.map(window.normalizePlayer)); setEventIntegration(binding); setManagementView('ranking');
   }
-  if (isAdmin && moduleAccess[managementView] === false) return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', color: '#edf4f0' }}>{managementNav}<p style={{ padding: 24 }}>{managementView === 'registration' ? '報名管理' : '排點管理'}已停止使用，請聯絡平台 Admin。</p></div>;
+  if (isAdmin && moduleAccess[managementView] === false) return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', color: '#edf4f0' }}>{managementNav}<p style={{ padding: 24 }}>{{registration:'報名管理',ranking:'排點管理',accounting:'帳務管理'}[managementView]}已停止使用，請聯絡平台 Admin。</p></div>;
+  if (isAdmin && managementView === 'accounting') return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016' }}>{managementNav}<AccountingAdmin /></div>;
   if (isAdmin && managementView === 'permissions' && platformRole === 'platformAdmin') return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016' }}>{managementNav}<PermissionsAdmin /></div>;
   if (isAdmin && managementView === 'registration') return <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#0c1016', overflow: 'hidden' }}>
-    {managementNav}
-    {window.REGISTRATION_V2 ? <ClubRegistrationAdmin onImport={function(scope) { if (moduleAccess.ranking === false) { alert('排點管理已停止使用，請聯絡平台 Admin。'); return; } window.__RANKING_SCOPE__ = scope; sessionStorage.setItem('rankingScope:' + firebase.auth().currentUser.uid, JSON.stringify(scope)); setRankingScope(scope); setShare(scope.publicToken); setActivityOpen(true); }} /> : <RegistrationAdmin onImport={() => setActivityOpen(true)} />}
+    {managementNav}{accountingFeedback}
+    {window.REGISTRATION_V2 ? <ClubRegistrationAdmin onAccounting={moduleAccess.accounting!==false?openAccounting:undefined} canImportRanking={moduleAccess.ranking!==false} onImport={function(scope) { if (moduleAccess.ranking === false) { alert('排點管理已停止使用，請聯絡平台 Admin。'); return; } window.__RANKING_SCOPE__ = scope; sessionStorage.setItem('rankingScope:' + firebase.auth().currentUser.uid, JSON.stringify(scope)); setRankingScope(scope); setShare(scope.publicToken); setActivityOpen(true); }} /> : <RegistrationAdmin onImport={() => setActivityOpen(true)} />}
+    {accountingModal}
     {activityOpen && <ActivityHandoffPanel scope={rankingScope} onClose={() => setActivityOpen(false)} onApplied={appliedRegistration} />}
   </div>;
 
@@ -3380,11 +3420,14 @@ function App() {
         ? '#0c1016'
         : 'radial-gradient(ellipse at 20% 0%, #1a2533 0%, #131820 60%, #0c1016 100%)',
     }}>
-      {managementNav}
+      {managementNav}{accountingFeedback}
       <TopBar
         theme={tweaks.theme}
         accent={tweaks.accent}
         onReset={handleReset}
+        onAccountingImport={isAdmin&&moduleAccess.accounting!==false?openRankingAccounting:undefined}
+        accountingBusy={accountingImportBusy}
+        accountingEmpty={!players.length}
         onShowQR={function() { setQROpen(true); }}
         onLogout={handleLogout}
         role={role}
@@ -3463,6 +3506,7 @@ function App() {
 
       <TweaksPanel state={tweaks} onChange={updateTweaks} show={showTweaks} />
 
+      {accountingModal}
       {activityOpen && isAdmin && <ActivityHandoffPanel scope={rankingScope} onClose={function() { setActivityOpen(false); }} onApplied={appliedRegistration} />}
       {qrOpen && <QRDialog url={playerUrl} onClose={function() { setQROpen(false); }} accent={tweaks.accent} />}
 

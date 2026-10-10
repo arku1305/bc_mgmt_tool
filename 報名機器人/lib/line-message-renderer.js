@@ -4,7 +4,7 @@ function render(session) {
   const fixed = activeFixed(session), guests = entriesOf(session);
   const lines = [`${session.teamName} 報名接龍`, `日期：${session.eventDate}`, `時間：${session.startTime}–${session.endTime}`,
     `地點：${session.location}`, ...(session.guestFee == null ? [] : [`臨打費用：${session.guestFee} 元／人`]), `場地數：${session.courtCount || 2}`,
-    ...(session.shuttlecock ? [`用球：${session.shuttlecock}`] : []), `人數上限：${session.totalCapacity}`, require('./activity-time').ended(session) ? '活動已結束，停止報名' : session.registrationOpen ? '報名開放中' : '暫停報名', '', session.message || '', '', '📋 固定成員'];
+    ...(session.shuttlecock ? [`用球：${session.shuttlecock}`] : []), `人數上限：${session.totalCapacity}`, ...(require('./activity-time').ended(session) ? ['活動已結束，停止報名'] : (session.registrationOpen ? [] : ['暫停報名'])), ...(session.message ? [session.message] : []), '📋 固定成員'];
   fixed.forEach((name, i) => lines.push(`${i + 1}. ${name}`));
   if (session.cancelledFixed?.length) lines.push('本次請假：' + session.cancelledFixed.join('、'));
   lines.push('', '🎯 臨打報名');

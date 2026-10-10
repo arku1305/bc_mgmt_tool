@@ -34,10 +34,10 @@ test('模組可獨立停止；移除後舊 UID 不可繞過，重新新增可恢
   const user = { uid: 'legacy-organizer', email: 'leader@example.test', email_verified: true };
   let registry = addOrganizer({}, admin, user.email, 100);
   registry = changeOrganizer(registry, admin, user.email, 'setModule', 'registration', false, 101);
-  assert.deepEqual(resolveAccess(user, registry, settings).modules, { registration: false, ranking: true });
+  assert.deepEqual(resolveAccess(user, registry, settings).modules, { registration: false, ranking: true, accounting: true });
   registry = changeOrganizer(registry, admin, user.email, 'setModule', 'ranking', false, 102);
-  assert.deepEqual(resolveAccess(user, registry, settings).modules, { registration: false, ranking: false });
-  assert.deepEqual(resolveAccess(admin, registry, settings).modules, { registration: true, ranking: true });
+  assert.deepEqual(resolveAccess(user, registry, settings).modules, { registration: false, ranking: false, accounting: true });
+  assert.deepEqual(resolveAccess(admin, registry, settings).modules, { registration: true, ranking: true, accounting: true });
   registry = changeOrganizer(registry, admin, user.email, 'remove', null, null, 103);
   assert.equal(resolveAccess(user, registry, settings), null);
   registry = addOrganizer(registry, admin, user.email, 104);

@@ -1,4 +1,5 @@
 {
+  "accountingV1": { ".read": false, ".write": false },
   "clubsV2": { ".read": false, ".write": false },
   "userClubsV2": { ".read": false, ".write": false },
   "eventSchedulesV2": { ".read": false, ".write": false },

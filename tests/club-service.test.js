@@ -91,7 +91,7 @@ test('費用未填且Firebase未存空值時，名單仍能確認並保存交接
 
 test('團長可刪除本人球團；移出清單並停用報名、排程及私有操作，歷史保留',async()=>{
  const f=fixture(true),user={uid:'leader'};
- const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',leadDays:3}})).body;
+ const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',untilDate:'2099-12-31',leadDays:3}})).body;
  const original=f.store.clubsV2[first.clubId],eventId=first.selectedEventId;
  const query={club:first.clubId,event:eventId};
  assert.equal((await f.call({uid:'admin'},query,{action:'deleteClub',expectedRevision:first.revision})).status,403);
@@ -107,7 +107,7 @@ test('團長可刪除本人球團；移出清單並停用報名、排程及私�
 
 test('每週固定入口換場後沿用同一系列，舊提交不會寫到新場，單次與其他系列隔離',async()=>{
  const f=fixture(),user={uid:'leader'};
- const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',leadDays:7}})).body;
+ const first=(await f.call(user,{}, {action:'createClub',fields:{...fields,frequency:'weekly',untilDate:'2099-12-31',leadDays:7}})).body;
  const club=f.store.clubsV2[first.clubId],series=first.selectedEventId;
  let now=Date.parse('2026-10-06T12:00:00+08:00');
  const time=require('../報名機器人/lib/activity-time');

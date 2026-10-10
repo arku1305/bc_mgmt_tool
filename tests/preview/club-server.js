@@ -1,7 +1,7 @@
 // Isolated multi-account preview; fake identities, memory database, no cloud connections.
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const stateFile = '/private/tmp/bc-club-preview-state.json';
+const stateFile = process.env.PREVIEW_STATE_FILE || '/private/tmp/bc-club-preview-state.json';
 let store = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
 const clone = value => value == null ? null : JSON.parse(JSON.stringify(value));
 const db = { ref(location) {

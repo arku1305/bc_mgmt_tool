@@ -1,7 +1,7 @@
 const test=require('node:test'), assert=require('node:assert/strict');
 const model=require('../報名機器人/lib/club-model'), core=require('../報名機器人/lib/registration');
 const {render}=require('../報名機器人/lib/line-message-renderer');
-const fields={name:'虛構週二團',date:'2026-10-06',startTime:'20:00',endTime:'22:00',location:'虛構球館',totalCapacity:4,guestFee:200,fixedFee:150,fixedMembers:['固定甲'],frequency:'weekly',intervalWeeks:1,leadDays:3,courtCount:2,shuttlecock:'測試用球',message:'請提前取消'};
+const fields={name:'虛構週二團',date:'2026-10-06',startTime:'20:00',endTime:'22:00',location:'虛構球館',totalCapacity:4,guestFee:200,fixedFee:150,fixedMembers:['固定甲'],frequency:'weekly',untilDate:'2026-12-31',intervalWeeks:1,leadDays:3,courtCount:2,shuttlecock:'測試用球',message:'請提前取消'};
 const context={uid:'leader',clubId:'club-11111111-1111-4111-8111-111111111111',eventId:'event-11111111-1111-4111-8111-111111111111',now:100};
 const create=()=>model.apply(null,{action:'createClub',fields},context);
 test('多場同時存在，單場覆寫不動預設與舊名單；不同 owner 不能變更',()=>{
@@ -95,4 +95,36 @@ test('新球團首場與新活動拒絕過去日期、今日已開始及剛好�
  assert.equal(model.apply(null,{action:'createClub',fields:future},ctx).events[ctx.eventId].startTime,'16:00');
  const midnight={...future,date:'2026-10-10',startTime:'00:15',endTime:'01:15'};
  assert.equal(model.apply(null,{action:'createClub',fields:midnight},{...ctx,now:Date.parse('2026-10-09T23:59:00+08:00')}).events[ctx.eventId].eventDate,'2026-10-10');
+});
+
+test('LINE 公告移除開放句，補充文字緊接資料與固定名單；暫停仍明確顯示',()=>{
+ const session={activityId:'fake',teamName:'虛構團',eventDate:'2099-10-13',startTime:'20:00',endTime:'22:00',location:'虛構球館',totalCapacity:4,registrationOpen:true,fixedMembers:['固定甲'],walkIns:[],message:'請準時出席'};
+ const text=render(session);assert.doesNotMatch(text,/報名開放中/);assert.match(text,/人數上限：4\n請準時出席\n📋 固定成員/);
+ assert.match(render({...session,registrationOpen:false}),/暫停報名\n請準時出席/);
+ assert.match(render({...session,eventDate:'2000-01-01'}),/活動已結束，停止報名/);
+});
+
+test('每週迄日必填且合法；包含迄日當場，之後不續開，舊系列保持相容',()=>{
+ for(const untilDate of ['',undefined,'2026-02-30','2026-10-05'])assert.throws(()=>model.apply(null,{action:'createClub',fields:{...fields,untilDate}},context));
+ let club=model.apply(null,{action:'createClub',fields:{...fields,untilDate:'2026-10-13'}},context);
+ const next=model.advance(club,Date.parse('2026-10-10T09:00:00+08:00'));assert.equal(next.created,1);
+ assert.equal(model.advance(next.club,Date.parse('2026-10-17T09:00:00+08:00')).created,0);
+ assert.equal(model.advance(club,Date.parse('2026-12-01T09:00:00+08:00')).created,0);
+ delete club.series[context.eventId].untilDate;
+ assert.equal(model.advance(club,Date.parse('2026-10-17T09:00:00+08:00')).created,1);
+});
+test('固定成員請假次數只算本系列期間內各場；恢復不計，其他系列不混入',()=>{
+ let club=model.apply(null,{action:'createClub',fields:{...fields,untilDate:'2026-10-13'}},context);
+ club=model.apply(club,{action:'leaveFixed',eventId:context.eventId,name:'固定甲'},context);
+ assert.equal(model.leaveCount(club,club.events[context.eventId],'固定甲'),1);
+ assert.throws(()=>model.apply(club,{action:'leaveFixed',eventId:context.eventId,name:'固定甲'},context));
+ club=model.advance(club,Date.parse('2026-10-10T09:00:00+08:00')).club;
+ const event=Object.values(club.events).find(e=>e.eventDate==='2026-10-13');
+ club=model.apply(club,{action:'leaveFixed',eventId:event.activityId,name:'固定甲'},context);
+ club.events.other={...event,activityId:'other',recurrenceId:'other',cancelledFixed:['固定甲']};
+ club.events.outside={...event,activityId:'outside',eventDate:'2026-10-20',cancelledFixed:['固定甲']};
+ assert.equal(model.leaveCount(club,event,'固定甲'),2);
+ club=model.apply(club,{action:'restoreFixed',eventId:event.activityId,name:'固定甲'},context);
+ assert.equal(model.leaveCount(club,event,'固定甲'),1);
+ const privateView=require('../報名機器人/lib/club-service').view(club,event.activityId);assert.equal(privateView.fixed[0].leaveCount,1);
 });

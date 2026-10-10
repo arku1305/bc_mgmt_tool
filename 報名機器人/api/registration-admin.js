@@ -11,6 +11,7 @@ module.exports = async (req, res) => {
 
   try {
     if (await accessService(req, res, db, user)) return;
+    if (req.query?.scope === 'accounting') return await require('../lib/accounting-service').service(req,res,db,user);
     if (req.query?.scope === 'line') {
       if (process.env.REGISTRATION_V2 !== 'true' || process.env.LINE_INTEGRATION_V2 !== 'true') return res.status(503).json({message:'LINE 新版串接尚未啟用'});
       return await require('../lib/line-integration').service(req,res,db,user);

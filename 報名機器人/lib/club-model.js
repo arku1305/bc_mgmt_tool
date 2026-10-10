@@ -68,8 +68,13 @@ function addEvent(club, fields, context) {
     const series = club.series[seriesId];
     if (series && Object.values(club.events).some(e=>e.recurrenceId===seriesId && require('./activity-time').open(e,context.now))) throw new Error('此每週系列已有可報名活動，請等本場結束');
     if (series && Object.values(club.events).some(e => e.recurrenceId === seriesId && e.eventDate === event.eventDate)) throw new Error('此週期日期已有活動');
+    const untilDate = series?.untilDate || fields.untilDate;
+    if (!series || untilDate) {
+      if (typeof untilDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(untilDate) || !Number.isFinite(Date.parse(untilDate)) || new Date(untilDate).toISOString().slice(0,10) !== untilDate) throw new Error('請填寫有效的迄日');
+      if (untilDate < event.eventDate) throw new Error('迄日不能早於活動日期');
+    }
     event.recurrenceId = seriesId;
-    club.series[seriesId] ||= { anchorDate: event.eventDate, latestEventId: event.activityId, intervalWeeks: 1, leadDays: event.leadDays, startTime: event.startTime, endTime: event.endTime, enabled: true };
+    club.series[seriesId] ||= { anchorDate: event.eventDate, untilDate, latestEventId: event.activityId, intervalWeeks: 1, leadDays: event.leadDays, startTime: event.startTime, endTime: event.endTime, enabled: true };
   }
   club.events[event.activityId] = event;
   return club;
@@ -87,6 +92,7 @@ function advance(club, now) {
     const candidate = core.autoAdvance({ team, current }, now, 'placeholder');
     if (!candidate) continue;
     const date = candidate.current.eventDate;
+    if (series.untilDate && date > series.untilDate) continue;
     const existing = Object.values(next.events).find(e => e.recurrenceId === seriesId && e.eventDate === date);
     if (existing) { series.latestEventId = existing.activityId; continue; }
     const eventId = 'event-' + core.digest([next.clubId, seriesId, date]).slice(0, 32);
@@ -97,4 +103,12 @@ function advance(club, now) {
   return { club: next, created: count };
 }
 function expire(club,now){if(club)for(const event of Object.values(club.events||{})){if(require('./activity-time').ended(event,now))event.registrationOpen=false;}return club;}
-module.exports = { apply, advance, stamp, expire };
+function leaveCount(club, session, name) {
+  const series = club.series?.[session.recurrenceId];
+  return Object.values(club.events || {}).filter(e =>
+    (session.recurrenceId ? e.recurrenceId === session.recurrenceId : e.activityId === session.activityId) &&
+    (!series || (e.eventDate >= series.anchorDate && (!series.untilDate || e.eventDate <= series.untilDate))) &&
+    core.fixedOf(e).includes(name) && (e.cancelledFixed || []).includes(name)
+  ).length;
+}
+module.exports = { apply, advance, stamp, expire, leaveCount };

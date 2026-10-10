@@ -400,21 +400,21 @@
       document.getElementById('form-cancel').style.display = !loadedEvent ? 'none' : '';
       document.getElementById('tab-signup').disabled = !loadedEvent || !data.registrationOpen || isFull;
       document.getElementById('form-signup').style.display = !loadedEvent || !data.registrationOpen || isFull ? 'none' : '';
-      if ((!data.registrationOpen || isFull) && loadedEvent && currentTab === 'signup') switchTab('cancel');
+      if ((!data.registrationOpen || isFull) && loadedEvent && currentTab === 'signup') switchTab('cancel', true);
 
     } catch (e) {
       if (!seriesId) loadedEvent = null; document.getElementById('slots-sub').textContent = '無法讀取活動，請重新整理'; document.getElementById('form-signup').style.display = 'none'; document.getElementById('form-cancel').style.display = 'none';
     }
   }
 
-  function switchTab(tab) {
+  function switchTab(tab, preserveMessage = false) {
     currentTab = tab;
     document.querySelectorAll('.tab-btn').forEach((b, i) => {
       b.classList.toggle('active', (i === 0 && tab === 'signup') || (i === 1 && tab === 'cancel'));
     });
     document.getElementById('form-signup').classList.toggle('hidden', tab !== 'signup');
     document.getElementById('form-cancel').classList.toggle('hidden', tab !== 'cancel');
-    clearMsg();
+    if (!preserveMessage) clearMsg();
   }
 
   function showMsg(text, type) {
@@ -450,7 +450,7 @@
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showMsg(`✅ ${name} 報名成功！可在 LINE 輸入「查名單」查看最新名單。`, 'success');
+        showMsg(`✅ ${name} 報名成功！請準時出席。`, 'success');
         document.getElementById('signup-name').value = '';
         document.getElementById('signup-phone').value = '';
         fetchStatus();

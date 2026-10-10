@@ -14,5 +14,14 @@ test('固定入口填寫時换場須重新確認，禁止送出原內容到下�
 });
 test('固定入口報名確認日期，提交明確場次與系列，不在提交時自動換場',async()=>{
  const f=fixture();await f.context.fetchStatus();f.node('signup-name').value='虛構球友';f.node('signup-phone').value='0912345678';await f.context.doSignup();
- assert.match(f.confirmed[0],/2026-10-13/);assert.equal(f.sent[0].eventId,'week-one');assert.equal(f.sent[0].series,'series-one');
+ assert.match(f.node('msg').textContent,/報名成功！請準時出席/);assert.doesNotMatch(f.node('msg').textContent,/查名單/);assert.match(f.confirmed[0],/2026-10-13/);assert.equal(f.sent[0].eventId,'week-one');assert.equal(f.sent[0].series,'series-one');
+});
+
+test('最後名額報名成功後刷新成額滿，成功訊息仍顯示；手動換分頁才清除',async()=>{
+ const f=fixture();f.setStatus({remaining:1});await f.context.fetchStatus();f.node('signup-name').value='最後一位';f.node('signup-phone').value='0912345678';await f.context.doSignup();
+ f.setStatus({remaining:0});await f.context.fetchStatus();
+ assert.match(f.node('msg').textContent,/最後一位 報名成功！請準時出席/);assert.equal(f.node('msg').className,'message show success');
+ assert.equal(f.node('full-banner').className,'full-banner show');assert.equal(f.node('form-signup').style.display,'none');
+ await f.context.fetchStatus();assert.equal(f.node('msg').className,'message show success');
+ f.context.switchTab('cancel');assert.equal(f.node('msg').className,'message');
 });

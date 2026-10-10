@@ -18,6 +18,7 @@ function view(club, eventId) {
     series: Object.entries(club.series || {}).map(([id,s]) => ({ id, ...s })),
     defaults: club.defaults, selectedEventId: session?.activityId || '',
     ...(session ? { ...core.adminView({ team: club.defaults, current: session }), revision: core.digest(club),
+      fixed: core.adminView({current:session}).fixed.map(p => ({...p,leaveCount:model.leaveCount(club,session,p.name)})),
       activity: { ...core.publicActivity(session), date: session.eventDate, startTime: session.startTime, endTime: session.endTime,
         waiting:!require('./activity-time').current(club,stored), fixedFee: session.fixedFee, courtCount: session.courtCount, shuttlecock: session.shuttlecock, message: session.message, frequency: session.frequency, recurrenceId: session.recurrenceId || null }, announcement: render(session) } : {}) };
 }
